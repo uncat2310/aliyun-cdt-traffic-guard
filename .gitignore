@@ -1,0 +1,22 @@
+# Node dependencies
+node_modules/
+dist/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Configuration files with secrets
+backend/config.json
+*.log
+*.log.*
+
+# OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

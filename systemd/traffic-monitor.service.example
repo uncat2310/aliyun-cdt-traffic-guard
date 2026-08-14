@@ -1,0 +1,14 @@
+[Unit]
+Description=Alibaba Cloud CDT Traffic Guard & Monitoring Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/traffic_guard/backend
+ExecStart=/opt/traffic_guard/.venv/bin/python3 /opt/traffic_guard/backend/monitor_service.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
