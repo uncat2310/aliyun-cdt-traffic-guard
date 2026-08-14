@@ -1,0 +1,12 @@
+services:
+  aliyun-cdt-traffic-guard:
+    image: ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
+    build: .
+    container_name: aliyun-traffic-guard
+    restart: unless-stopped
+    ports:
+      - "8388:8388"
+    volumes:
+      - ./config.json:/app/config.json
+    environment:
+      - PORT=8388
