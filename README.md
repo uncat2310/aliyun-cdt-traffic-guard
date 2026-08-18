@@ -20,7 +20,7 @@
 
 **阿里云 CDT 流量守卫 (Aliyun CDT Traffic Guard)** 是一套专为使用阿里云云数据传输（CDT）共享额度设计的自动化流量监控与安全保护系统。
 
-系统集成了 **SSR-Lite 毫秒级极速首屏直出**、多节点流量聚合计算、日均速率与续航天数预测、72小时走势图以及全自动超额熔断关机保护功能，助你轻松掌控多台 ECS 服务器的网络流量。
+系统集成了 **SSR-Lite 毫秒级极速首屏直出**、1 台或多台节点自适应流量聚合、日均速率与续航天数预测、72小时走势图以及全自动超额熔断关机保护功能，单机、双机、多机用同一份配置即可。
 
 ---
 
@@ -129,33 +129,48 @@ aliyun-cdt-traffic-guard/
 
 ## ⚙️ 配置文件说明 (`config.json`)
 
+请复制 `backend/config.example.json` 为项目根目录或后端目录下的 `config.json`。  
+**只有一台 CDT 服务器时，`servers` 里只保留一个节点。** 未改完的占位节点（`YOUR_ALIYUN_*`、`i-xxxxxxxx`）会被自动忽略，不会再误显示成 2 台。
+
+### 单机示例
+
 ```json
 {
-  "access_key_id": "YOUR_ALIYUN_ACCESS_KEY_ID",
-  "access_key_secret": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
-  "region_id": "cn-hongkong",
-  "instances": [
-    {
-      "id": "i-j6cxxxxxxxxxxxxxxxxx",
+  "host": "0.0.0.0",
+  "port": 8388,
+  "node_tag": "Guard-Master",
+  "servers": {
+    "server1": {
+      "id": "server1",
       "name": "香港节点 01",
-      "quota_gb": 180,
-      "ip": "43.99.*.*"
+      "masked_ip": "43.99.*.*",
+      "ip": "43.99.0.1",
+      "instance_id": "i-j6cxxxxxxxxxxxxxxxxx",
+      "region_id": "cn-hongkong",
+      "ak": "YOUR_ALIYUN_ACCESS_KEY_ID",
+      "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
+      "threshold_gb": 180.0,
+      "bandwidth_mbps": 2000,
+      "log_files": ["/opt/auto/auto1.log"]
     }
-  ],
-  "total_quota_gb": 200,
-  "check_interval_seconds": 60,
-  "auto_shutdown": true
+  }
 }
 ```
 
+### 双机 / 多机
+
+在 `servers` 里继续加 `server2`、`server3`… 即可，节点 key 可以自定义（不再要求必须叫 `server1` / `server2`）。面板会按实际节点数量渲染中间卡片、汇总文案和走势图。
+
 | 字段 | 类型 | 说明 |
 | :--- | :--- | :--- |
-| `access_key_id` | String | 阿里云 RAM 访问凭据 AccessKey ID |
-| `access_key_secret` | String | 阿里云 RAM 访问凭据 AccessKey Secret |
-| `region_id` | String | 实例所在地域（如 `cn-hongkong`） |
-| `instances` | Array | 监控的 ECS 实例列表及各实例配额阈值 |
-| `total_quota_gb` | Number | CDT 月度免费/安全共享总额度（单位：GB） |
-| `auto_shutdown` | Boolean | 达到阈值时是否自动执行实例停机保护 |
+| `host` / `port` | String / Number | 监控面板监听地址 |
+| `servers.<id>.ak` / `sk` | String | 该节点对应阿里云账号的 AccessKey |
+| `servers.<id>.instance_id` | String | 该节点 ECS 实例 ID |
+| `servers.<id>.region_id` | String | 实例地域（如 `cn-hongkong`） |
+| `servers.<id>.threshold_gb` | Number | 该节点月度安全额度（GB），超额由独立守卫脚本停机 |
+| `servers.<id>.log_files` | String[] | 守卫脚本日志路径，用于 72H / 14D 历史图 |
+
+独立停机脚本见 `scripts/auto_traffic_guard.py`，按节点各跑一份即可。
 
 ---
 

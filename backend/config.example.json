@@ -8,26 +8,13 @@
       "name": "香港节点 01",
       "masked_ip": "43.99.*.*",
       "ip": "43.99.0.1",
-      "instance_id": "i-xxxxxxxxxxxxxxxxx1",
+      "instance_id": "i-xxxxxxxxxxxxxxxxx",
       "region_id": "cn-hongkong",
-      "ak": "YOUR_ALIYUN_ACCESS_KEY_ID_1",
-      "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET_1",
+      "ak": "YOUR_ALIYUN_ACCESS_KEY_ID",
+      "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
       "threshold_gb": 180.0,
       "bandwidth_mbps": 2000,
       "log_files": ["/opt/auto/auto1.log"]
-    },
-    "server2": {
-      "id": "server2",
-      "name": "香港节点 02",
-      "masked_ip": "8.210.*.*",
-      "ip": "8.210.0.1",
-      "instance_id": "i-xxxxxxxxxxxxxxxxx2",
-      "region_id": "cn-hongkong",
-      "ak": "YOUR_ALIYUN_ACCESS_KEY_ID_2",
-      "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET_2",
-      "threshold_gb": 180.0,
-      "bandwidth_mbps": 2000,
-      "log_files": ["/opt/auto/auto2.log"]
     }
   }
 }

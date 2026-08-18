@@ -57,10 +57,54 @@ def load_config():
         }
     }
 
+PLACEHOLDER_MARKERS = (
+    "YOUR_ALIYUN",
+    "YOUR_ACCESS",
+    "i-xxxxxxxx",
+    "i-example",
+    "i-yourinstanceid",
+)
+
+SERIES_COLORS = (
+    "#0ea5e9",
+    "#6366f1",
+    "#10b981",
+    "#f59e0b",
+    "#f43f5e",
+    "#8b5cf6",
+    "#14b8a6",
+    "#f97316",
+)
+
+
+def is_configured_server(cfg):
+    """跳过示例占位节点，避免单机用户复制 example 后仍显示两台。"""
+    if not isinstance(cfg, dict):
+        return False
+    ak = str(cfg.get("ak") or "").strip()
+    sk = str(cfg.get("sk") or "").strip()
+    instance_id = str(cfg.get("instance_id") or "").strip()
+    if not ak or not sk or not instance_id:
+        return False
+    blob = f"{ak} {sk} {instance_id}"
+    return not any(marker.lower() in blob.lower() for marker in PLACEHOLDER_MARKERS)
+
+
+def node_count_label(count):
+    if count <= 0:
+        return "未配置"
+    if count == 1:
+        return "单机"
+    if count == 2:
+        return "两机"
+    return f"{count}机"
+
+
 CONFIG = load_config()
 HOST = CONFIG.get("host", "0.0.0.0")
 PORT = CONFIG.get("port", 8388)
-SERVERS = CONFIG.get("servers", {})
+_RAW_SERVERS = CONFIG.get("servers") or {}
+SERVERS = {key: cfg for key, cfg in _RAW_SERVERS.items() if is_configured_server(cfg)}
 
 _cache = {
     "overview_timestamp": 0,
@@ -268,6 +312,8 @@ def compute_overview_data():
         }
 
     combined_pct = round((combined_used_gb / combined_threshold_gb) * 100, 1) if combined_threshold_gb > 0 else 0.0
+    node_total = len(servers_data)
+    running_count = sum(1 for s in servers_data.values() if s.get("status") == "Running")
 
     return {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -277,66 +323,81 @@ def compute_overview_data():
             "total_threshold_gb": round(combined_threshold_gb, 1),
             "total_remaining_gb": round(max(0.0, combined_threshold_gb - combined_used_gb), 3),
             "total_percentage": combined_pct,
-            "nodes_online": sum(1 for s in servers_data.values() if s.get("status") == "Running"),
-            "nodes_total": len(servers_data),
-            "running_count": sum(1 for s in servers_data.values() if s.get("status") == "Running")
+            "nodes_online": running_count,
+            "nodes_total": node_total,
+            "running_count": running_count,
+            "node_count_label": node_count_label(node_total)
         },
+        "server_ids": list(servers_data.keys()),
         "servers": servers_data
     }
 
 
-def compute_history_data():
-    s_keys = list(SERVERS.keys())
-    s1_cfg = SERVERS[s_keys[0]] if len(s_keys) > 0 else {"log_files": []}
-    s2_cfg = SERVERS[s_keys[1]] if len(s_keys) > 1 else {"log_files": []}
+def build_server_series_meta():
+    meta = []
+    for idx, (s_key, s_cfg) in enumerate(SERVERS.items()):
+        meta.append({
+            "id": s_key,
+            "name": s_cfg.get("name", s_key),
+            "masked_ip": s_cfg.get("masked_ip", "*.*.*.*"),
+            "color": SERIES_COLORS[idx % len(SERIES_COLORS)]
+        })
+    return meta
 
-    h1 = parse_server_history(s1_cfg.get("log_files", []))
-    h2 = parse_server_history(s2_cfg.get("log_files", []))
+
+def compute_history_data():
+    parsed = {}
+    for s_key, s_cfg in SERVERS.items():
+        parsed[s_key] = parse_server_history(s_cfg.get("log_files", []))
 
     hourly_dict = {}
-    for pt in h1.get("hourly", []):
-        t = pt["time"]
-        if t not in hourly_dict:
-            hourly_dict[t] = {"time": t, "server1_gb": pt["traffic_gb"], "server2_gb": None}
-        else:
-            hourly_dict[t]["server1_gb"] = pt["traffic_gb"]
-
-    for pt in h2.get("hourly", []):
-        t = pt["time"]
-        if t not in hourly_dict:
-            hourly_dict[t] = {"time": t, "server1_gb": None, "server2_gb": pt["traffic_gb"]}
-        else:
-            hourly_dict[t]["server2_gb"] = pt["traffic_gb"]
+    for s_key, hist in parsed.items():
+        for pt in hist.get("hourly", []):
+            t = pt["time"]
+            item = hourly_dict.setdefault(t, {"time": t, "values": {}})
+            item["values"][s_key] = pt["traffic_gb"]
+            item[f"{s_key}_gb"] = pt["traffic_gb"]
 
     merged_hourly = []
     for t in sorted(hourly_dict.keys()):
         item = hourly_dict[t]
-        s1 = item["server1_gb"] or 0.0
-        s2 = item["server2_gb"] or 0.0
-        item["total_gb"] = round(s1 + s2, 3)
+        total = 0.0
+        for s_key in SERVERS:
+            val = item["values"].get(s_key)
+            if val is None:
+                val = 0.0
+                item["values"][s_key] = 0.0
+            total += val
+        item["total_gb"] = round(total, 3)
         merged_hourly.append(item)
 
     daily_dict = {}
-    for pt in h1.get("daily", []):
-        d = pt["date"]
-        daily_dict[d] = {"date": d, "server1_delta_gb": pt["delta_gb"], "server1_cum_gb": pt["cum_gb"], "server2_delta_gb": 0.0, "server2_cum_gb": 0.0}
-
-    for pt in h2.get("daily", []):
-        d = pt["date"]
-        if d not in daily_dict:
-            daily_dict[d] = {"date": d, "server1_delta_gb": 0.0, "server1_cum_gb": 0.0, "server2_delta_gb": pt["delta_gb"], "server2_cum_gb": pt["cum_gb"]}
-        else:
-            daily_dict[d]["server2_delta_gb"] = pt["delta_gb"]
-            daily_dict[d]["server2_cum_gb"] = pt["cum_gb"]
+    for s_key, hist in parsed.items():
+        for pt in hist.get("daily", []):
+            d = pt["date"]
+            item = daily_dict.setdefault(d, {"date": d, "values": {}, "cum_values": {}})
+            item["values"][s_key] = pt["delta_gb"]
+            item["cum_values"][s_key] = pt["cum_gb"]
+            item[f"{s_key}_delta_gb"] = pt["delta_gb"]
+            item[f"{s_key}_cum_gb"] = pt["cum_gb"]
 
     merged_daily = []
     for d in sorted(daily_dict.keys()):
         item = daily_dict[d]
-        item["total_delta_gb"] = round(item["server1_delta_gb"] + item["server2_delta_gb"], 3)
+        total = 0.0
+        for s_key in SERVERS:
+            val = item["values"].get(s_key)
+            if val is None:
+                val = 0.0
+                item["values"][s_key] = 0.0
+                item[f"{s_key}_delta_gb"] = 0.0
+            total += val
+        item["total_delta_gb"] = round(total, 3)
         merged_daily.append(item)
 
     return {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "servers": build_server_series_meta(),
         "hourly": merged_hourly[-72:],
         "daily": merged_daily[-14:]
     }
@@ -520,7 +581,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
 
 
 def main():
+    skipped = [key for key in _RAW_SERVERS if key not in SERVERS]
     logger.info(f"Starting High-Performance Traffic Guard Server on {HOST}:{PORT}")
+    logger.info(f"Configured nodes: {len(SERVERS)} ({', '.join(SERVERS.keys()) or 'none'})")
+    if skipped:
+        logger.warning(f"Skipped placeholder / incomplete nodes: {', '.join(skipped)}")
     get_cached_overview(force=True)
     get_cached_history(force=True)
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Activity,
   ShieldCheck,
   RefreshCw,
   Sun,
@@ -17,12 +16,65 @@ import {
 
 const API_BASE = window.location.origin;
 
+const SERIES_COLORS = [
+  '#0ea5e9',
+  '#6366f1',
+  '#10b981',
+  '#f59e0b',
+  '#f43f5e',
+  '#8b5cf6',
+  '#14b8a6',
+  '#f97316'
+];
+
 const formatNum = (num, digits = 2) => {
   if (num === null || num === undefined || isNaN(num)) return '0.00';
   return Number(num).toFixed(digits);
 };
 
-// 紧凑型圆形仪表盘
+const nodeCountLabel = (count) => {
+  if (!count || count <= 0) return '未配置';
+  if (count === 1) return '单机';
+  if (count === 2) return '两机';
+  return `${count}机`;
+};
+
+const listServers = (overview) => {
+  if (!overview?.servers) return [];
+  if (Array.isArray(overview.server_ids) && overview.server_ids.length) {
+    return overview.server_ids
+      .map((id) => overview.servers[id])
+      .filter(Boolean);
+  }
+  return Object.values(overview.servers);
+};
+
+const resolveSeries = (historyData, overview) => {
+  if (Array.isArray(historyData?.servers) && historyData.servers.length) {
+    return historyData.servers;
+  }
+
+  const fromOverview = listServers(overview).map((server, idx) => ({
+    id: server.id,
+    name: server.name,
+    masked_ip: server.ip,
+    color: SERIES_COLORS[idx % SERIES_COLORS.length]
+  }));
+  if (fromOverview.length) return fromOverview;
+
+  return [];
+};
+
+const getHourlyVal = (point, seriesId) => {
+  if (point?.values && point.values[seriesId] != null) return Number(point.values[seriesId]) || 0;
+  return Number(point?.[`${seriesId}_gb`]) || 0;
+};
+
+const getDailyVal = (point, seriesId) => {
+  if (point?.values && point.values[seriesId] != null) return Number(point.values[seriesId]) || 0;
+  return Number(point?.[`${seriesId}_delta_gb`]) || 0;
+};
+
 const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
   const radius = 38;
   const stroke = 7;
@@ -66,10 +118,10 @@ const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
   );
 };
 
-// 移动端与桌面端自适应图表组件
-const ResponsiveTrafficCharts = ({ historyData }) => {
+const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const [activeTab, setActiveTab] = useState('hourly');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const series = resolveSeries(historyData, overview);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -77,16 +129,23 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  if (!historyData || (!historyData.hourly?.length && !historyData.daily?.length)) {
+  if (!historyData || (!historyData.hourly?.length && !historyData.daily?.length) || series.length === 0) {
     return null;
   }
 
   const hourly = historyData.hourly || [];
-  const rawMaxH = Math.max(5, ...hourly.map(d => Math.max(d.server1_gb || 0, d.server2_gb || 0))) * 1.15;
+  const daily = historyData.daily || [];
+
+  const rawMaxH = Math.max(
+    5,
+    ...hourly.flatMap((point) => series.map((item) => getHourlyVal(point, item.id)))
+  ) * 1.15;
   const maxHourlyVal = Math.ceil(rawMaxH);
 
-  const daily = historyData.daily || [];
-  const rawMaxD = Math.max(0.5, ...daily.map(d => Math.max(d.server1_delta_gb || 0, d.server2_delta_gb || 0))) * 1.25;
+  const rawMaxD = Math.max(
+    0.5,
+    ...daily.flatMap((point) => series.map((item) => getDailyVal(point, item.id)))
+  ) * 1.25;
   const maxDailyVal = Math.ceil(rawMaxD * 10) / 10;
 
   const chartWidth = isMobile ? 540 : 860;
@@ -99,24 +158,20 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
   const graphW = chartWidth - padLeft - padRight;
   const graphH = chartHeight - padTop - padBottom;
   const baselineY = padTop + graphH;
+  const lastIdx = hourly.length - 1;
+  const lastX = padLeft + graphW;
 
-  const getLinePath = (key) => {
+  const getLinePath = (seriesId) => {
     if (hourly.length === 0) return '';
     return hourly.reduce((acc, pt, idx) => {
       const x = padLeft + (idx / (hourly.length - 1 || 1)) * graphW;
-      const val = pt[key] || 0;
+      const val = getHourlyVal(pt, seriesId);
       const y = padTop + graphH - (val / maxHourlyVal) * graphH;
       return `${acc} ${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }, '');
   };
 
-  const s1Path = getLinePath('server1_gb');
-  const s2Path = getLinePath('server2_gb');
-
-  const lastIdx = hourly.length - 1;
-  const lastX = padLeft + graphW;
-  const s1LastY = padTop + graphH - ((hourly[lastIdx]?.server1_gb || 0) / maxHourlyVal) * graphH;
-  const s2LastY = padTop + graphH - ((hourly[lastIdx]?.server2_gb || 0) / maxHourlyVal) * graphH;
+  const barSlot = Math.max(1, series.length);
 
   return (
     <div className="analytics-section">
@@ -142,28 +197,27 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
       </div>
 
       <div className="chart-legend-subrow">
-        <div className="legend-item">
-          <span className="legend-dot s1"></span>
-          <span>香港节点 01 (43.99.*.*)</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-dot s2"></span>
-          <span>香港节点 02 (8.210.*.*)</span>
-        </div>
+        {series.map((item) => (
+          <div className="legend-item" key={item.id}>
+            <span className="legend-dot" style={{ background: item.color }}></span>
+            <span>
+              {item.name}
+              {item.masked_ip ? ` (${item.masked_ip})` : ''}
+            </span>
+          </div>
+        ))}
       </div>
 
       <div className="chart-container">
         {activeTab === 'hourly' ? (
           <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="chart-svg">
             <defs>
-              <linearGradient id="grad-s1" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.0" />
-              </linearGradient>
-              <linearGradient id="grad-s2" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#6366f1" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
-              </linearGradient>
+              {series.map((item) => (
+                <linearGradient key={item.id} id={`grad-${item.id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={item.color} stopOpacity="0.4" />
+                  <stop offset="100%" stopColor={item.color} stopOpacity="0.0" />
+                </linearGradient>
+              ))}
             </defs>
 
             {[0, 0.33, 0.66, 1].map((ratio, i) => {
@@ -188,23 +242,28 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
             <line x1={padLeft} y1={padTop} x2={padLeft} y2={baselineY} className="chart-axis-line" />
             <line x1={padLeft} y1={baselineY} x2={chartWidth - padRight} y2={baselineY} className="chart-axis-line" />
 
-            {hourly.length > 1 && (
-              <>
-                <path
-                  d={`${s1Path} L ${padLeft + graphW} ${baselineY} L ${padLeft} ${baselineY} Z`}
-                  className="chart-area-s1"
-                />
-                <path
-                  d={`${s2Path} L ${padLeft + graphW} ${baselineY} L ${padLeft} ${baselineY} Z`}
-                  className="chart-area-s2"
-                />
-                <path d={s1Path} className="chart-line-s1" />
-                <path d={s2Path} className="chart-line-s2" />
-
-                <circle cx={lastX} cy={s1LastY} r="4.5" fill="#0ea5e9" stroke="#ffffff" strokeWidth="2" />
-                <circle cx={lastX} cy={s2LastY} r="4.5" fill="#6366f1" stroke="#ffffff" strokeWidth="2" />
-              </>
-            )}
+            {hourly.length > 1 && series.map((item) => {
+              const path = getLinePath(item.id);
+              const lastY = padTop + graphH - (getHourlyVal(hourly[lastIdx], item.id) / maxHourlyVal) * graphH;
+              return (
+                <g key={item.id}>
+                  <path
+                    d={`${path} L ${padLeft + graphW} ${baselineY} L ${padLeft} ${baselineY} Z`}
+                    fill={`url(#grad-${item.id})`}
+                    stroke="none"
+                  />
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={item.color}
+                    strokeWidth="2.4"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={lastX} cy={lastY} r="4.5" fill={item.color} stroke="#ffffff" strokeWidth="2" />
+                </g>
+              );
+            })}
 
             {hourly.map((pt, idx) => {
               const step = Math.max(1, Math.ceil(hourly.length / (isMobile ? 3 : 5)));
@@ -258,33 +317,28 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
             {daily.map((d, idx) => {
               const totalBars = daily.length;
               const groupW = graphW / totalBars;
-              const barW = Math.max(6, (groupW - (isMobile ? 8 : 12)) / 2);
+              const barW = Math.max(6, (groupW - (isMobile ? 8 : 12)) / barSlot);
               const xCenter = padLeft + idx * groupW + groupW / 2;
-
-              const s1H = ((d.server1_delta_gb || 0) / maxDailyVal) * graphH;
-              const s2H = ((d.server2_delta_gb || 0) / maxDailyVal) * graphH;
-
-              const s1Y = baselineY - s1H;
-              const s2Y = baselineY - s2H;
+              const clusterWidth = barW * barSlot + (barSlot - 1) * 3;
+              const clusterStart = xCenter - clusterWidth / 2;
 
               return (
                 <g key={idx}>
-                  <rect
-                    x={xCenter - barW - 1.5}
-                    y={s1Y}
-                    width={barW}
-                    height={Math.max(2, s1H)}
-                    fill="#0ea5e9"
-                    rx="2"
-                  />
-                  <rect
-                    x={xCenter + 1.5}
-                    y={s2Y}
-                    width={barW}
-                    height={Math.max(2, s2H)}
-                    fill="#6366f1"
-                    rx="2"
-                  />
+                  {series.map((item, sIdx) => {
+                    const value = getDailyVal(d, item.id);
+                    const height = (value / maxDailyVal) * graphH;
+                    return (
+                      <rect
+                        key={item.id}
+                        x={clusterStart + sIdx * (barW + 3)}
+                        y={baselineY - height}
+                        width={barW}
+                        height={Math.max(2, height)}
+                        fill={item.color}
+                        rx="2"
+                      />
+                    );
+                  })}
                   <line x1={xCenter} y1={baselineY} x2={xCenter} y2={baselineY + 4} className="chart-tick-line" />
                   <text
                     x={xCenter}
@@ -305,22 +359,26 @@ const ResponsiveTrafficCharts = ({ historyData }) => {
   );
 };
 
-// 服务器卡片
-const ServerCard = ({ nodeTag, data }) => {
+const ServerCard = ({ data }) => {
   if (!data) return null;
 
-  const { ip, status, traffic, ecs_info } = data;
-  const isRunning = status === 'Running';
+  const traffic = data.traffic || {};
+  const ecsInfo = data.ecs_info || {};
+  const isRunning = data.status === 'Running';
+  const threshold = traffic.threshold_gb ?? 180;
+  const bandwidth = traffic.bandwidth_mbps ?? 2000;
+  const regionId = data.region_id || 'cn-hongkong';
+  const regionName = data.region_name || '阿里云';
 
   return (
     <div className="server-card">
       <div className="card-top-header">
         <div className="server-title-group">
           <div className="server-main-title">
-            <span className="node-name">{nodeTag}</span>
-            <span className="masked-ip-pill">{ip}</span>
+            <span className="node-name">{data.name || data.id || '节点'}</span>
+            <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
           </div>
-          <div className="server-sub-tag">阿里云香港 ECS · 2000M BGP</div>
+          <div className="server-sub-tag">{regionName} ECS · {bandwidth}M BGP</div>
         </div>
 
         <div className="server-status-pills">
@@ -338,7 +396,7 @@ const ServerCard = ({ nodeTag, data }) => {
       <div className="gauge-section">
         <CircularGauge
           used={traffic.used_gb}
-          total={traffic.threshold_gb}
+          total={threshold}
           percentage={traffic.percentage}
         />
 
@@ -353,7 +411,7 @@ const ServerCard = ({ nodeTag, data }) => {
           <div className="metric-row">
             <span className="metric-label">剩余安全额度</span>
             <span className="metric-value">
-              {formatNum(traffic.remaining_gb, 2)} <small>/ {traffic.threshold_gb} GB</small>
+              {formatNum(traffic.remaining_gb, 2)} <small>/ {threshold} GB</small>
             </span>
           </div>
 
@@ -361,9 +419,9 @@ const ServerCard = ({ nodeTag, data }) => {
             <div
               className="progress-bar-fill"
               style={{
-                width: `${Math.min(traffic.percentage, 100)}%`,
+                width: `${Math.min(traffic.percentage || 0, 100)}%`,
                 background:
-                  traffic.percentage >= 85
+                  (traffic.percentage || 0) >= 85
                     ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
                     : 'linear-gradient(90deg, #06b6d4, #10b981)'
               }}
@@ -381,27 +439,27 @@ const ServerCard = ({ nodeTag, data }) => {
         <div className="mini-stat-box">
           <span className="title">预计可用天数</span>
           <span className="num" style={{ color: traffic.days_left_est < 10 ? '#f43f5e' : 'inherit' }}>
-            {traffic.days_left_est > 90 ? '> 90 天' : `~${traffic.days_left_est} 天`}
+            {traffic.days_left_est > 90 ? '> 90 天' : `~${traffic.days_left_est ?? 0} 天`}
           </span>
         </div>
 
         <div className="mini-stat-box">
           <span className="title">峰值共享带宽</span>
-          <span className="num">{traffic.bandwidth_mbps} Mbps</span>
+          <span className="num">{bandwidth} Mbps</span>
         </div>
       </div>
 
       <div className="card-footer">
         <div className="spec-item">
           <Cpu size={12} />
-          <span>{ecs_info?.cpu || 2} vCPU / {ecs_info?.memory || 0.5} GB</span>
+          <span>{ecsInfo.cpu || 2} vCPU / {ecsInfo.memory || 0.5} GB</span>
         </div>
         <div className="spec-item">
           <ShieldCheck size={12} color="#10b981" />
-          <span>阈值 180GB 自动关机防护</span>
+          <span>阈值 {threshold}GB 自动关机防护</span>
         </div>
         <div className="spec-item" style={{ fontFamily: 'var(--font-mono)' }}>
-          cn-hongkong
+          {regionId}
         </div>
       </div>
     </div>
@@ -409,7 +467,6 @@ const ServerCard = ({ nodeTag, data }) => {
 };
 
 export default function App() {
-  // 服务端首屏数据直出支持 (SSR-Lite: 零延迟即刻渲染)
   const initialData = typeof window !== 'undefined' ? window.__INITIAL_DATA__ : null;
 
   const [themeMode, setThemeMode] = useState(() => {
@@ -492,7 +549,6 @@ export default function App() {
     }
   };
 
-  // 如果首屏没有内嵌数据，则进行初始化拉取
   useEffect(() => {
     if (!initialData?.overview) {
       fetchData(false);
@@ -507,17 +563,26 @@ export default function App() {
     return () => clearInterval(timer);
   }, [autoRefreshInterval]);
 
+  const serverList = listServers(overview);
+  const nodeTotal = overview?.summary?.nodes_total ?? serverList.length;
+  const countLabel = overview?.summary?.node_count_label || nodeCountLabel(nodeTotal);
+  const firstThreshold = serverList[0]?.traffic?.threshold_gb || 180;
+
   const summary = overview?.summary || {
-    total_used_gb: 40.65,
-    total_threshold_gb: 360,
-    total_remaining_gb: 319.35,
-    total_percentage: 11.3,
-    nodes_online: 2,
-    nodes_total: 2,
-    running_count: 2
+    total_used_gb: 0,
+    total_threshold_gb: 0,
+    total_remaining_gb: 0,
+    total_percentage: 0,
+    nodes_online: 0,
+    nodes_total: nodeTotal,
+    running_count: 0,
+    node_count_label: countLabel
   };
 
   const currentTheme = getThemeInfo();
+  const headerHint = nodeTotal <= 1
+    ? `阿里云 CDT 流量安全监控 · ${firstThreshold}GB 额度守护 · 超额自动停机`
+    : `阿里云 CDT 流量安全监控 · ${firstThreshold}GB/台 额度守护 · 超额自动停机`;
 
   return (
     <div className="main-viewport">
@@ -527,7 +592,6 @@ export default function App() {
       </div>
 
       <div className="dashboard-container">
-        {/* 顶部导航栏 */}
         <header className="dashboard-header">
           <div className="header-brand">
             <div className="brand-icon-box">
@@ -542,7 +606,7 @@ export default function App() {
                   <span className="badge-dot"></span> 守卫生效中
                 </span>
               </h1>
-              <p>阿里云 CDT 流量安全监控 · 180GB/台 额度守护 · 超额自动停机</p>
+              <p>{headerHint}</p>
             </div>
           </div>
 
@@ -613,14 +677,13 @@ export default function App() {
           </div>
         </header>
 
-        {/* 概览摘要卡片 */}
         <section className="summary-grid">
           <div className="summary-card">
             <div className="summary-icon icon-blue">
               <HardDrive size={18} />
             </div>
             <div className="summary-meta">
-              <div className="label">两机总消耗</div>
+              <div className="label">{countLabel}总消耗</div>
               <div className="value">{formatNum(summary.total_used_gb, 2)} <small>GB</small></div>
               <div className="subtext">总额度 {summary.total_threshold_gb} GB ({summary.total_percentage}%)</div>
             </div>
@@ -643,7 +706,7 @@ export default function App() {
             </div>
             <div className="summary-meta">
               <div className="label">节点运行状态</div>
-              <div className="value">{summary.running_count} / {summary.nodes_total} <small>正常</small></div>
+              <div className="value">{summary.running_count || 0} / {summary.nodes_total || 0} <small>正常</small></div>
               <div className="subtext">BGP 专线防护中</div>
             </div>
           </div>
@@ -660,22 +723,28 @@ export default function App() {
           </div>
         </section>
 
-        {/* 主服务器卡片网格 */}
-        <main className="servers-grid">
-          <ServerCard
-            nodeTag="香港节点 01"
-            data={overview?.servers?.server1}
-          />
-          <ServerCard
-            nodeTag="香港节点 02"
-            data={overview?.servers?.server2}
-          />
-        </main>
+        {serverList.length > 0 ? (
+          <main className={`servers-grid ${serverList.length === 1 ? 'is-single' : ''}`}>
+            {serverList.map((server) => (
+              <ServerCard key={server.id} data={server} />
+            ))}
+          </main>
+        ) : (
+          <main className="servers-grid is-single">
+            <div className="server-card empty-config-card">
+              <div className="server-main-title">
+                <span className="node-name">尚未配置监控节点</span>
+              </div>
+              <p className="empty-config-text">
+                在 <code>config.json</code> 的 <code>servers</code> 里填写至少一台 ECS 的 AccessKey 与实例 ID。
+                单机只保留一个节点即可；复制示例后未改的占位节点会被自动忽略。
+              </p>
+            </div>
+          </main>
+        )}
 
-        {/* 响应式流量趋势分析图表 */}
-        <ResponsiveTrafficCharts historyData={history} />
+        <ResponsiveTrafficCharts historyData={history} overview={overview} />
 
-        {/* 底部版权信息 */}
         <footer className="dashboard-footer">
           <span>流量守卫 · 阿里云 CDT 流量安全防护系统 · 自动化停机保安全</span>
         </footer>

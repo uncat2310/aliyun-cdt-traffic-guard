@@ -387,11 +387,34 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 主服务器卡片网格 (2 列) */
+/* 主服务器卡片网格：1 台铺满，2 台及以上自适应分列 */
 .servers-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
+}
+
+.servers-grid.is-single {
+  grid-template-columns: 1fr;
+}
+
+.empty-config-card {
+  min-height: 140px;
+  justify-content: center;
+}
+
+.empty-config-text {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.empty-config-text code {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-inset);
 }
 
 .server-card {
