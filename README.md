@@ -1,212 +1,130 @@
 <div align="center">
 
-# 流量守卫
+# 🛡️ 流量守卫
 
-阿里云 CDT 出网流量监控面板：一份配置同时提供前端看板和超额自动关机。
+**一份配置，同时看流量、超额自动关机。**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
-[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ed.svg)](https://www.docker.com/)
+专为阿里云 CDT 出网额度设计。跑在一台一直在线的机器上，远程守护 1 台或多台抢占式 ECS。
 
-[在线 Demo](https://honkai3rd.eu.org) · [GitHub](https://github.com/uncat2310/aliyun-cdt-traffic-guard)
+<br/>
+
+[![Live Demo](https://img.shields.io/badge/Demo-在线预览-0ea5e9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://honkai3rd.eu.org)
+[![GitHub](https://img.shields.io/badge/GitHub-uncat2310-111827?style=for-the-badge&logo=github)](https://github.com/uncat2310/aliyun-cdt-traffic-guard)
+
+<br/>
+
+[![License](https://img.shields.io/github/license/uncat2310/aliyun-cdt-traffic-guard?style=flat-square&color=blue)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/uncat2310/aliyun-cdt-traffic-guard?style=flat-square&color=10b981)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/commits/main)
+[![Stars](https://img.shields.io/github/stars/uncat2310/aliyun-cdt-traffic-guard?style=flat-square&logo=github)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/stargazers)
+[![Docker](https://img.shields.io/github/actions/workflow/status/uncat2310/aliyun-cdt-traffic-guard/docker-publish.yml?style=flat-square&label=GHCR&logo=githubactions&logoColor=white)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/actions)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827)](https://react.dev/)
+[![Visitors](https://visitor-badge.laobi.icu/badge?page_id=uncat2310.aliyun-cdt-traffic-guard)](https://github.com/uncat2310/aliyun-cdt-traffic-guard)
 
 </div>
 
 ---
 
-## 这是什么
+## 在线 Demo
 
-给使用阿里云 **云数据传输（CDT）** 共享出网额度的机器准备的监控面板。
+假数据，只用来看界面。不会连接你的阿里云。
 
-从本仓库部署后，同一份 `config.json`、同一个进程会同时做两件事：
-
-- 网页上看当月已用、剩余额度、日均消耗、预计可用天数，以及 72H / 14D 走势
-- 每分钟按阈值自动关机；未超额时也可自动开机（和教程里的 crontab 脚本同一套逻辑）
-
-不需要再单独挂 `auto1.py` / crontab。服务自己写历史日志，图表不会因为 crontab 丢了而停更。
-
-假数据 Demo：<https://honkai3rd.eu.org>（备用 <https://demo.as4837.de>）
-
-- [1 台](https://honkai3rd.eu.org/?nodes=1)
-- [3 台](https://honkai3rd.eu.org/?nodes=3)
-- [5 台](https://honkai3rd.eu.org/?nodes=5)
-
-Demo 里的数字是虚构的，用来看布局和图表，不会连你的阿里云账号。
+| 1 台 | 3 台 | 5 台 |
+| :---: | :---: | :---: |
+| [打开](https://honkai3rd.eu.org/?nodes=1) | [打开](https://honkai3rd.eu.org/?nodes=3) | [打开](https://honkai3rd.eu.org/?nodes=5) |
 
 ---
 
-## 功能
+## 它做什么
 
-- **N 台节点**：`config.json` 里有几台，面板就显示几台。1 台用 Hero Card，多台用紧凑卡片；5 台是 3+2 居中。
-- **首屏直出**：后端把 overview / history 注入 `window.__INITIAL_DATA__`，打开页面不用先白屏再拉接口。
-- **72H 累积趋势**：折线 + 浅面积，整数 Y 轴，终点显示当前值，Hover 看历史时刻。
-- **14D 每日消耗**：分组柱状图，整数 nice ticks，按天对比各节点。
-- **浅色 / 深色 / 跟随系统**
-- **IP 脱敏**：面板只展示掩码 IP。
-- **超额自动关机**：用量达到 `threshold_gb` 就停对应 ECS；降回去后可自动开机。
-- **历史日志内置**：服务自己按教程同款格式写日志，72H / 14D 不再依赖外部 crontab。
-- **占位节点自动忽略**：示例里没改完的 `YOUR_ALIYUN_*` / `i-xxxxxxxx` 不会当成真机器画出来。
+同一个进程、同一份 `config.json`：
+
+| | |
+| --- | --- |
+| 🖥️ **看板** | 当月已用、剩余额度、日均、预计可用天数；72H 累积趋势、14D 每日消耗 |
+| 🛑 **守卫** | 每 60 秒查一次 CDT。达到阈值关机，降回去可自动开机 |
+| 📈 **历史** | 服务自己写日志，图表不依赖外部 crontab |
+
+不需要再单独挂 `auto1.py`。
+
+> 请把本服务部署在**一直在线**的机器上（独立服务器 / 家用 NAS / 另一台包年云主机），去远程管那些抢占式实例。不要装在抢占式自己里面。
 
 ---
 
-## 快速开始
+## 5 分钟部署
 
-### Docker
+### 1. 准备 RAM
 
-```bash
-cp backend/config.example.json config.json
-# 编辑 config.json，填入 AccessKey 和实例 ID
+单独建一个子账号，授予：
 
-docker run -d \
-  --name aliyun-traffic-guard \
-  --restart unless-stopped \
-  -p 8388:8388 \
-  -v "$(pwd)/config.json:/app/config.json" \
-  ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
-```
+- `AliyunCDTFullAccess`
+- `AliyunECSFullAccess`
 
-浏览器打开 <http://localhost:8388>。
+记下 AccessKey ID / Secret，以及要守护的 ECS 实例 ID。
 
-### Docker Compose
+### 2. 写配置
 
 ```bash
 git clone https://github.com/uncat2310/aliyun-cdt-traffic-guard.git
 cd aliyun-cdt-traffic-guard
 cp backend/config.example.json config.json
-# 编辑 config.json
+```
 
+编辑 `config.json`，至少改这三项：
+
+```json
+"instance_id": "i-xxxxxxxxxxxxxxxxx",
+"ak": "你的 AccessKey ID",
+"sk": "你的 AccessKey Secret"
+```
+
+一台机器只留一个 `servers` 节点。多台就复制 `server2`、`server3`。
+
+### 3. 启动
+
+```bash
 docker compose up -d
 ```
 
-### 源码运行
+打开 [http://localhost:8388](http://localhost:8388)。
+
+开机自启由 Docker `restart: unless-stopped` 负责。用 systemd 跑源码时，把服务 `enable` 即可。
+
+---
+
+## 配置说明
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `guard_enabled` | `true` | 是否自动开关机 |
+| `guard_auto_start` | `true` | 未超额时是否自动开机 |
+| `guard_interval_seconds` | `60` | 检查间隔（秒） |
+| `servers.<id>.region_id` | `cn-hongkong` | 实例地域 |
+| `servers.<id>.threshold_gb` | `180` | 该节点月度安全额度 |
+| `servers.<id>.log_files` | 空 | 留空则写到 `history/<id>.log` |
+
+判定和常见 CDT 教程脚本相同：查 `ListCdtInternetTraffic`，总量 ≥ 阈值就停，否则开。查询失败这一轮不动机器。
+
+**不要把带真实密钥的 `config.json` 提交到 Git。**
+
+---
+
+## 源码运行（可选）
 
 ```bash
-cd frontend
-npm install
-npm run build
-cd ../backend
-
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+cd frontend && npm install && npm run build && cd ..
+cp -R frontend/dist backend/dashboard_dist
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp config.example.json config.json
-# 编辑 config.json
-
+cp config.example.json config.json   # 填密钥
 python monitor_service.py
 ```
 
-后端会读取同目录下的 `dashboard_dist`。Docker 镜像构建时已经把前端产物拷进去；源码运行需要自己把 `frontend/dist` 拷成 `backend/dashboard_dist`：
-
-```bash
-cp -R frontend/dist backend/dashboard_dist
-```
-
-Windows PowerShell：
-
-```powershell
-Copy-Item -Recurse frontend\dist backend\dashboard_dist
-```
-
-### 本地假数据 Demo
-
-不需要阿里云密钥：
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-python scripts/demo_server.py
-```
-
-然后打开：
-
-- <http://127.0.0.1:8388/?nodes=1>
-- <http://127.0.0.1:8388/?nodes=3>
-- <http://127.0.0.1:8388/?nodes=5>
-
 ---
 
-## 配置
+<div align="center">
 
-复制 `backend/config.example.json` 为 `config.json`。  
-**只有一台机器时，`servers` 里只留一个节点。**
+[MIT License](LICENSE) · [在线 Demo](https://honkai3rd.eu.org) · [Issues](https://github.com/uncat2310/aliyun-cdt-traffic-guard/issues)
 
-```json
-{
-  "host": "0.0.0.0",
-  "port": 8388,
-  "node_tag": "Guard-Master",
-  "guard_enabled": true,
-  "guard_auto_start": true,
-  "guard_interval_seconds": 60,
-  "servers": {
-    "server1": {
-      "id": "server1",
-      "name": "香港节点 01",
-      "masked_ip": "43.99.*.*",
-      "ip": "43.99.0.1",
-      "instance_id": "i-j6cxxxxxxxxxxxxxxxxx",
-      "region_id": "cn-hongkong",
-      "ak": "YOUR_ALIYUN_ACCESS_KEY_ID",
-      "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
-      "threshold_gb": 180.0,
-      "bandwidth_mbps": 0,
-      "log_files": []
-    }
-  }
-}
-```
-
-多机就在 `servers` 里继续加 `server2`、`server3`，key 可以自定义。
-
-| 字段 | 说明 |
-| --- | --- |
-| `host` / `port` | 面板监听地址 |
-| `guard_enabled` | 是否启用超额关机 / 自动开机，默认 `true` |
-| `guard_auto_start` | 未超额时是否自动开机，默认 `true` |
-| `guard_interval_seconds` | 守卫检查间隔，默认 60 秒 |
-| `servers.<id>.ak` / `sk` | 该节点阿里云 AccessKey |
-| `servers.<id>.instance_id` | ECS 实例 ID |
-| `servers.<id>.region_id` | 地域，例如 `cn-hongkong` |
-| `servers.<id>.threshold_gb` | 该节点月度安全额度（GB） |
-| `servers.<id>.log_files` | 可选。留空则写到 `history/<id>.log` |
-
-RAM 子账号至少需要：读 CDT、读 ECS、以及对应实例的开关机权限（教程里的 `AliyunCDTFullAccess` + `AliyunECSFullAccess` 即可）。
-
-不建议把守卫脚本放在抢占式机器自己里面跑：关机后 crontab 也会停，无法自动开机。把本服务跑在一台一直在线的机器（或 Docker）上，远程管那些抢占式实例。
-
----
-
-## 目录
-
-```text
-aliyun-cdt-traffic-guard/
-├── backend/                     # 面板 HTTP 服务与阿里云查询
-│   ├── config.example.json
-│   ├── monitor_service.py
-│   └── requirements.txt
-├── frontend/                    # React 19 + Vite 面板
-├── scripts/
-│   ├── auto_traffic_guard.py    # 超额停机脚本
-│   └── demo_server.py           # 假数据 Demo
-├── systemd/                     # systemd 模板
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
-```
-
----
-
-## 权限与安全
-
-建议单独建 RAM 子账号，授予 CDT 读取、ECS 读取，以及对应实例的开关机权限。
-
-**不要把带真实 AccessKey 的 `config.json` 提交到 Git。**
-
----
-
-## License
-
-[MIT](LICENSE)
+</div>
