@@ -73,49 +73,6 @@ const getDailyVal = (point, seriesId) => {
   return Number(point?.[`${seriesId}_delta_gb`]) || 0;
 };
 
-const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
-  const size = 72;
-  const stroke = 6;
-  const radius = (size - stroke) / 2;
-  const cx = size / 2;
-  const circumference = radius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (Math.min(percentage, 100) / 100) * circumference;
-
-  let strokeColor = '#10b981';
-  if (percentage >= 85) strokeColor = '#f43f5e';
-  else if (percentage >= 65) strokeColor = '#f59e0b';
-
-  return (
-    <div className="gauge-circle-container">
-      <svg viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle
-          className="gauge-bg"
-          strokeWidth={stroke}
-          fill="none"
-          r={radius}
-          cx={cx}
-          cy={cx}
-        />
-        <circle
-          className="gauge-progress"
-          stroke={strokeColor}
-          strokeWidth={stroke}
-          strokeDasharray={`${circumference} ${circumference}`}
-          style={{ strokeDashoffset }}
-          strokeLinecap="round"
-          fill="none"
-          r={radius}
-          cx={cx}
-          cy={cx}
-        />
-      </svg>
-      <div className="gauge-text-center">
-        <div className="gauge-val-pct">{formatNum(percentage, 0)}%</div>
-      </div>
-    </div>
-  );
-};
-
 const SummaryRing = ({ percentage = 0, tone = 'used' }) => {
   const size = 44;
   const stroke = 4.5;
@@ -498,84 +455,55 @@ const ServerCard = ({ data }) => {
 
   const traffic = data.traffic || {};
   const isRunning = data.status === 'Running';
-  const threshold = traffic.threshold_gb ?? 180;
-  const bandwidth = Number(traffic.bandwidth_mbps);
-  const hasBandwidth = Number.isFinite(bandwidth) && bandwidth > 0;
+  const usedPct = Math.min(traffic.percentage || 0, 100);
+  const daysLeft = traffic.days_left_est;
+  const daysHot = daysLeft < 10;
+  const barColor = usedPct >= 85
+    ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
+    : 'linear-gradient(90deg, #38bdf8, #10b981)';
 
   return (
-    <div className="server-card">
+    <div className={`server-card ${isRunning ? 'is-online' : 'is-offline'}`}>
       <div className="card-top-header">
-        <div className="server-title-group">
-          <div className="server-main-title">
-            <span className="node-name">{data.name || data.id || '节点'}</span>
-            <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
-          </div>
+        <div className="server-main-title">
+          <span className="node-name">{data.name || data.id || '节点'}</span>
+          <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
         </div>
+        <span className={`status-text ${isRunning ? 'is-on' : 'is-off'}`}>
+          <span className="dot"></span>
+          {isRunning ? '运行中' : '已关机'}
+        </span>
+      </div>
 
-        <div className="server-status-pills">
-          <span className={`status-pill ${isRunning ? 'status-pill-online' : 'status-pill-offline'}`}>
-            <span className="dot"></span>
-            <span>{isRunning ? '运行中' : '已关机'}</span>
-          </span>
+      <div className="card-hero">
+        <div className="hero-main">
+          <div className="hero-value">
+            {formatNum(traffic.used_gb, 2)}
+            <small>GB</small>
+          </div>
+          <div className="hero-label">本月已用 {formatNum(usedPct, 0)}%</div>
         </div>
       </div>
 
-      <div className="gauge-section">
-        <CircularGauge
-          used={traffic.used_gb}
-          total={threshold}
-          percentage={traffic.percentage}
-        />
-
-        <div className="gauge-details">
-          <div className="metric-row">
-            <span className="metric-label">已用</span>
-            <span className="metric-value metric-value-highlight">
-              {formatNum(traffic.used_gb, 2)} <small>GB</small>
-            </span>
-          </div>
-
-          <div className="metric-row">
-            <span className="metric-label">剩余</span>
-            <span className="metric-value">
-              {formatNum(traffic.remaining_gb, 2)} <small>GB</small>
-            </span>
-          </div>
-
-          <div className="progress-bar-wrap">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width: `${Math.min(traffic.percentage || 0, 100)}%`,
-                background:
-                  (traffic.percentage || 0) >= 85
-                    ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
-                    : 'linear-gradient(90deg, #06b6d4, #10b981)'
-              }}
-            ></div>
-          </div>
-        </div>
+      <div className="progress-bar-wrap is-hero">
+        <div className="progress-bar-fill" style={{ width: `${usedPct}%`, background: barColor }}></div>
       </div>
 
-      <div className={`card-mini-grid ${hasBandwidth ? '' : 'is-two'}`}>
-        <div className="mini-stat-box">
-          <span className="title">日均</span>
-          <span className="num">{formatNum(traffic.daily_avg_gb, 2)} <small>GB</small></span>
+      <div className="card-meta">
+        <div className="meta-item">
+          <span className="k">剩余</span>
+          <span className="v">{formatNum(traffic.remaining_gb, 2)} GB</span>
         </div>
-
-        <div className="mini-stat-box">
-          <span className="title">可用</span>
-          <span className="num" style={{ color: traffic.days_left_est < 10 ? '#f43f5e' : 'inherit' }}>
-            {traffic.days_left_est > 90 ? '> 90' : formatNum(traffic.days_left_est ?? 0, 0)} <small>天</small>
+        <div className="meta-item">
+          <span className="k">日均</span>
+          <span className="v">{formatNum(traffic.daily_avg_gb, 2)} GB</span>
+        </div>
+        <div className="meta-item">
+          <span className="k">可用</span>
+          <span className={`v ${daysHot ? 'is-hot' : ''}`}>
+            {daysLeft > 90 ? '> 90 天' : `${formatNum(daysLeft ?? 0, 0)} 天`}
           </span>
         </div>
-
-        {hasBandwidth && (
-          <div className="mini-stat-box">
-            <span className="title">带宽</span>
-            <span className="num">{bandwidth} <small>Mbps</small></span>
-          </div>
-        )}
       </div>
     </div>
   );

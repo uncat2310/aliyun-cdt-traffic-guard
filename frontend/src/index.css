@@ -465,6 +465,33 @@ body.dark-theme .brand-wordmark {
   grid-template-columns: 1fr;
 }
 
+.servers-grid.is-single .server-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "hero meta"
+    "bar bar";
+  column-gap: 48px;
+  row-gap: 12px;
+  align-items: end;
+}
+
+.servers-grid.is-single .card-top-header { grid-area: head; }
+.servers-grid.is-single .card-hero { grid-area: hero; }
+.servers-grid.is-single .progress-bar-wrap { grid-area: bar; }
+.servers-grid.is-single .card-meta {
+  grid-area: meta;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 0;
+}
+
+.servers-grid.is-single .meta-item .v {
+  font-size: 0.98rem;
+}
+
 .servers-grid.is-two,
 .servers-grid.is-four {
   grid-template-columns: repeat(2, 1fr);
@@ -527,54 +554,12 @@ body.dark-theme .brand-wordmark {
   font-size: 1rem;
 }
 
-.servers-grid.is-compact .server-sub-tag {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.servers-grid.is-compact .hero-value {
+  font-size: 1.7rem;
 }
 
-.servers-grid.is-compact .server-status-pills {
-  justify-content: flex-start;
-}
-
-.servers-grid.is-compact .gauge-section {
-  padding: 10px 12px;
-  gap: 12px;
-  overflow: hidden;
-}
-
-.servers-grid.is-compact .gauge-circle-container {
-  width: 56px;
-  height: 56px;
-}
-
-.servers-grid.is-compact .gauge-val-pct {
-  font-size: 0.82rem;
-}
-
-.servers-grid.is-compact .gauge-sublabel {
-  font-size: 0.56rem;
-}
-
-.servers-grid.is-compact .card-mini-grid {
-  gap: 6px;
-}
-
-.servers-grid.is-compact .mini-stat-box {
-  padding: 7px 8px;
-}
-
-.servers-grid.is-compact .mini-stat-box .title {
-  font-size: 0.62rem;
-}
-
-.servers-grid.is-compact .mini-stat-box .num {
-  font-size: 0.78rem;
-}
-
-.servers-grid.is-compact .card-footer {
-  flex-wrap: wrap;
-  gap: 6px 12px;
+.servers-grid.is-compact .card-meta {
+  gap: 8px 12px;
 }
 
 .empty-config-card {
@@ -600,7 +585,7 @@ body.dark-theme .brand-wordmark {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 18px 20px;
+  padding: 20px 22px 16px;
   box-shadow: var(--card-shadow);
   backdrop-filter: blur(16px);
   position: relative;
@@ -608,216 +593,109 @@ body.dark-theme .brand-wordmark {
   flex-direction: column;
   gap: 14px;
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .server-card:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
 }
 
-/* 重新设计的卡片头部：完全杜绝折行与错位 */
 .card-top-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   width: 100%;
-}
-
-.server-title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
 }
 
 .server-main-title {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
-  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .node-name {
-  font-size: 1.12rem;
-  font-weight: 700;
+  font-size: 0.98rem;
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .masked-ip-pill {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--bg-inset);
-  padding: 2px 7px;
-  border-radius: 5px;
-  border: 1px solid var(--border-subtle);
-  white-space: nowrap;
-}
-
-.server-sub-tag {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.server-status-pills {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  flex-wrap: nowrap;
-}
-
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 9999px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-pill-online {
-  background: var(--badge-online-bg);
-  color: var(--badge-online-text);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.status-pill-bgp {
-  background: rgba(6, 182, 212, 0.12);
-  color: #22d3ee;
-  border: 1px solid rgba(6, 182, 212, 0.25);
-}
-
-.status-pill-offline {
-  background: var(--badge-offline-bg);
-  color: var(--badge-offline-text);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-}
-
-.status-pill .dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-/* 流量配额仪表区域 */
-.gauge-section {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 12px 16px;
-  background: var(--bg-inset);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
-  min-width: 0;
-}
-
-.gauge-circle-container {
-  position: relative;
-  width: 64px;
-  height: 64px;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-
-.gauge-circle-container svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  transform: rotate(-90deg);
-  transform-origin: center;
-}
-
-.gauge-bg {
-  stroke: var(--gauge-track);
-}
-
-.gauge-progress {
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.gauge-text-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-}
-
-.gauge-val-pct {
-  font-size: 1.12rem;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-
-.gauge-sublabel {
-  font-size: 0.62rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.gauge-details {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.metric-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 0.82rem;
-}
-
-.metric-label {
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-}
-
-.metric-value {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 1.08rem;
-  color: var(--text-primary);
-  letter-spacing: -0.03em;
-}
-
-.metric-value-highlight {
-  font-size: 1.22rem;
-  color: #0284c7;
-}
-
-body.dark-theme .metric-value-highlight {
-  color: #38bdf8;
-}
-
-.metric-value small {
   font-size: 0.72rem;
   font-weight: 500;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
-/* 进度条 */
+.status-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  flex-shrink: 0;
+}
+
+.status-text.is-on { color: var(--badge-online-text); }
+.status-text.is-off { color: var(--badge-offline-text); }
+
+.status-text .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.card-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hero-value {
+  font-family: var(--font-mono);
+  font-size: 2.15rem;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  line-height: 0.92;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hero-value small {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.hero-label {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
 .progress-bar-wrap {
   width: 100%;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 4px;
+  background: var(--gauge-track);
   border-radius: 99px;
   overflow: hidden;
-  margin-top: 3px;
+}
+
+.progress-bar-wrap.is-hero {
+  height: 6px;
+  margin-top: 2px;
 }
 
 .progress-bar-fill {
@@ -826,48 +704,35 @@ body.dark-theme .metric-value-highlight {
   transition: width 0.6s ease;
 }
 
-/* 核心指标微网格 */
-.card-mini-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.card-mini-grid.is-two {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.mini-stat-box {
-  background: var(--bg-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
+.card-meta {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  text-align: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding-top: 2px;
 }
 
-.mini-stat-box .title {
-  font-size: 0.68rem;
-  color: var(--text-secondary);
+.meta-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
-.mini-stat-box .num {
-  font-size: 1.02rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  letter-spacing: -0.03em;
-}
-
-.mini-stat-box .num small {
-  font-size: 0.68rem;
-  font-weight: 500;
+.meta-item .k {
+  font-size: 0.7rem;
   color: var(--text-muted);
-  margin-left: 2px;
+}
+
+.meta-item .v {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.meta-item .v.is-hot {
+  color: #f43f5e;
 }
 
 /* 底部规格参数 */
@@ -1186,33 +1051,24 @@ body.dark-theme .metric-value-highlight {
     justify-self: stretch;
   }
 
-  .server-card {
-    padding: 14px 14px;
+  .server-card,
+  .servers-grid.is-single .server-card {
+    display: flex;
+    padding: 16px 16px 14px;
     gap: 12px;
+  }
+
+  .servers-grid.is-single .card-meta {
+    flex-direction: row;
+    align-items: baseline;
   }
 
   .node-name {
-    font-size: 1.05rem;
+    font-size: 0.95rem;
   }
 
-  .masked-ip-pill {
-    font-size: 0.75rem;
-    padding: 2px 5px;
-  }
-
-  .status-pill {
-    padding: 2px 6px;
-    font-size: 0.65rem;
-  }
-
-  .gauge-section {
-    padding: 10px 12px;
-    gap: 12px;
-  }
-
-  .gauge-circle-container {
-    width: 68px;
-    height: 68px;
+  .hero-value {
+    font-size: 1.85rem;
   }
 
   .analytics-section {
