@@ -191,7 +191,7 @@ def query_ecs_info(server_cfg):
             "memory": round(inst.get("Memory", 2048) / 1024, 1),
             "internet_bw_out": _safe_int(inst.get("InternetMaxBandwidthOut")),
             "eip_bandwidth": _safe_int((inst.get("EipAddress") or {}).get("Bandwidth")),
-            "public_ips": _collect_public_ips(inst, server_cfg),
+            "public_ips": sorted(_collect_public_ips(inst, server_cfg)),
             "os_name": "Linux",
             "creation_time": inst.get("CreationTime", ""),
             "expired_time": inst.get("ExpiredTime", "")
@@ -278,7 +278,7 @@ def resolve_bandwidth_mbps(server_cfg, ecs):
     ecs_bw = _safe_int(ecs.get("internet_bw_out")) or _safe_int(ecs.get("eip_bandwidth"))
     if ecs_bw:
         return ecs_bw
-    return query_shared_bandwidth(server_cfg, ecs.get("public_ips") or set())
+    return query_shared_bandwidth(server_cfg, set(ecs.get("public_ips") or []))
 
 
 # ================== 历史日志解析 ==================
