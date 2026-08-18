@@ -552,21 +552,19 @@ body.dark-theme .brand-wordmark {
 
 .server-card.is-hero {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1.15fr) minmax(200px, 0.95fr);
+  grid-template-columns: 132px minmax(0, 1.5fr) minmax(132px, 0.42fr);
   grid-template-areas:
     "head head head"
-    "gauge stats spark"
-    "bar bar bar";
-  column-gap: 28px;
-  row-gap: 16px;
+    "gauge stats spark";
+  column-gap: 24px;
+  row-gap: 14px;
   align-items: center;
 }
 
 .server-card.is-hero .card-top-header { grid-area: head; }
 .server-card.is-hero .card-gauge { grid-area: gauge; justify-self: center; }
 .server-card.is-hero .card-stats { grid-area: stats; }
-.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; }
-.server-card.is-hero .card-quota-bar { grid-area: bar; }
+.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; align-self: end; }
 
 .server-card.is-compact {
   display: flex;
@@ -729,19 +727,19 @@ body.dark-theme .brand-wordmark {
 }
 
 .sparkline-caption {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .sparkline-svg {
   width: 100%;
-  height: 64px;
+  height: 46px;
   display: block;
 }
 
 .sparkline.is-empty {
-  height: 64px;
+  height: 46px;
   display: flex;
   align-items: center;
   color: var(--text-muted);
@@ -749,7 +747,7 @@ body.dark-theme .brand-wordmark {
 }
 
 .server-card.is-hero .sparkline-svg {
-  height: 78px;
+  height: 50px;
 }
 
 .progress-bar-wrap {

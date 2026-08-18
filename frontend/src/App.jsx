@@ -46,9 +46,24 @@ const trafficHealth = (daysLeft) => {
   return { key: 'ok', label: '健康' };
 };
 
-const hourlyValuesFor = (historyData, serverId) => {
+const SPARK_WINDOW_HOURS = 3;
+
+const incrementalValuesFor = (historyData, serverId) => {
   const hourly = historyData?.hourly || [];
-  return hourly.map((point) => getHourlyVal(point, serverId));
+  if (hourly.length < 2) return [];
+
+  const hourDeltas = [];
+  for (let i = 1; i < hourly.length; i += 1) {
+    const delta = getHourlyVal(hourly[i], serverId) - getHourlyVal(hourly[i - 1], serverId);
+    hourDeltas.push(delta > 0 ? delta : 0);
+  }
+
+  const windows = [];
+  for (let i = 0; i + SPARK_WINDOW_HOURS <= hourDeltas.length; i += SPARK_WINDOW_HOURS) {
+    const slice = hourDeltas.slice(i, i + SPARK_WINDOW_HOURS);
+    windows.push(slice.reduce((sum, value) => sum + value, 0));
+  }
+  return windows;
 };
 
 const gaugeColor = (percentage) => {
@@ -125,41 +140,41 @@ const DonutGauge = ({ percentage = 0, size = 72, stroke = 7 }) => {
   );
 };
 
-const Sparkline = ({ values = [], color = '#0ea5e9' }) => {
+const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node' }) => {
   const width = 280;
-  const height = 72;
-  const pad = 3;
-  const gid = `spark-${color.replace('#', '')}`;
+  const height = 48;
+  const padX = 2;
+  const padY = 4;
+  const gid = `spark-${uid}`;
 
   if (!values.length) {
     return <div className="sparkline is-empty">暂无趋势</div>;
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values, 0.001);
+  const min = rawMax > rawMin * 2.4 ? 0 : Math.max(0, rawMin * 0.82);
+  const span = rawMax - min || 0.001;
   const points = values.map((value, idx) => {
-    const x = pad + (idx / (values.length - 1 || 1)) * (width - pad * 2);
-    const y = height - pad - ((value - min) / span) * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    const x = padX + (idx / (values.length - 1 || 1)) * (width - padX * 2);
+    const y = height - padY - ((value - min) / span) * (height - padY * 2);
+    return [x, y];
   });
-  const line = points.map((point, idx) => `${idx === 0 ? 'M' : 'L'}${point.replace(',', ' ')}`).join(' ');
-  const last = points[points.length - 1].split(',');
-  const first = points[0].split(',');
-  const area = `${line} L ${last[0]} ${height} L ${first[0]} ${height} Z`;
+  const line = points.map((point, idx) => `${idx === 0 ? 'M' : 'L'}${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${points[points.length - 1][0].toFixed(1)} ${height} L ${points[0][0].toFixed(1)} ${height} Z`;
 
   return (
     <div className="sparkline">
-      <div className="sparkline-caption">近 72 小时</div>
+      <div className="sparkline-caption">每 3 小时消耗</div>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="sparkline-svg" aria-hidden="true">
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.22" />
             <stop offset="100%" stopColor={color} stopOpacity="0.02" />
           </linearGradient>
         </defs>
         <path d={area} fill={`url(#${gid})`} />
-        <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
       </svg>
     </div>
   );
@@ -559,24 +574,8 @@ const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
       </div>
 
       <div className="card-spark">
-        <Sparkline values={sparkline} color={gaugeColor(usedPct)} />
+        <Sparkline values={sparkline} color={gaugeColor(usedPct)} uid={data.id || data.name || 'node'} />
       </div>
-
-      {isHero && (
-        <div className="card-quota-bar">
-          <div className="progress-bar-wrap is-hero">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width: `${usedPct}%`,
-                background: usedPct >= 85
-                  ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
-                  : 'linear-gradient(90deg, #38bdf8, #10b981)'
-              }}
-            ></div>
-          </div>
-        </div>
-      )}
     </article>
   );
 };
@@ -836,7 +835,7 @@ export default function App() {
                 key={server.id}
                 data={server}
                 variant={isHeroLayout ? 'hero' : 'compact'}
-                sparkline={hourlyValuesFor(history, server.id)}
+                sparkline={incrementalValuesFor(history, server.id)}
               />
             ))}
           </main>

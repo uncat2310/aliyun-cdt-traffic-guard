@@ -189,18 +189,22 @@ def build_history(count):
         })
 
     hourly = []
+    cumulative = {item["id"]: round(item["used_gb"] * 0.58, 3) for item in nodes}
     for hour in range(72, 0, -1):
         point_time = now - timedelta(hours=hour)
         values = {}
         row = {"time": point_time.strftime("%Y-%m-%d %H:00"), "values": values}
-        total = 0.0
-        progress = (72 - hour) / 71
+        hod = point_time.hour
         for item in nodes:
-            val = round(max(1.0, item["used_gb"] * (0.62 + 0.38 * progress)), 2)
-            values[item["id"]] = val
-            row[f"{item['id']}_gb"] = val
-            total += val
-        row["total_gb"] = round(total, 3)
+            base = max(0.02, item["daily_avg_gb"] / 24.0)
+            diurnal = 2.2 if 11 <= hod <= 23 else 0.28
+            burst = 2.4 if hod in (12, 13, 19, 20, 21) else (0.45 if hod in (2, 3, 4, 5) else 1.0)
+            wobble = 0.55 + ((hour * 7 + len(item["id"]) * 5) % 8) * 0.16
+            increment = max(0.004, base * diurnal * burst * wobble)
+            cumulative[item["id"]] = round(cumulative[item["id"]] + increment, 3)
+            values[item["id"]] = cumulative[item["id"]]
+            row[f"{item['id']}_gb"] = cumulative[item["id"]]
+        row["total_gb"] = round(sum(values.values()), 3)
         hourly.append(row)
 
     daily = []
