@@ -55,13 +55,32 @@
 
 ### 2. 准备配置
 
+代码已经在本地的话，先进入项目根目录（和 `docker-compose.yml` 同一层）。还没有代码就先克隆：
+
 ```bash
 git clone https://github.com/uncat2310/aliyun-cdt-traffic-guard.git
 cd aliyun-cdt-traffic-guard
+```
+
+`docker-compose.yml` 仓库里已经有了，不用自己建。只要把示例配置复制到**根目录**，和它放在一起：
+
+```bash
 cp backend/config.example.json config.json
 ```
 
-编辑项目根目录的 `config.json`：
+此时目录是这样：
+
+```text
+aliyun-cdt-traffic-guard/          ← 在这里执行 docker compose
+├── docker-compose.yml             ← 仓库自带，负责拉镜像、挂配置、映射 8388
+├── config.json                    ← 你刚复制的，填自己的密钥和实例
+├── backend/
+│   └── config.example.json        ← 模板，不要改这个当正式配置
+├── frontend/
+└── ...
+```
+
+编辑根目录的 `config.json`：
 
 ```json
 {
@@ -99,29 +118,13 @@ cp backend/config.example.json config.json
 
 ### 3. 用 Docker Compose 启动（推荐）
 
-仓库里的 `docker-compose.yml`：
-
-```yaml
-services:
-  aliyun-cdt-traffic-guard:
-    image: ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
-    build: .
-    container_name: aliyun-traffic-guard
-    restart: unless-stopped
-    ports:
-      - "8388:8388"
-    volumes:
-      - ./config.json:/app/config.json:ro
-      - ./history:/app/history
-    environment:
-      - PORT=8388
-```
-
-在项目根目录执行：
+还是在项目根目录（能同时看到 `docker-compose.yml` 和 `config.json`）：
 
 ```bash
 docker compose up -d
 ```
+
+Compose 会读取同目录的 `docker-compose.yml`：拉取 `ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest`，把你的 `config.json` 挂进容器，并把 `8388` 端口露出来。第一次没有镜像会自动拉；要在本地构建就加 `--build`。
 
 第一次如果本机还没有镜像，Compose 会从 GHCR 拉取 `latest`。也可以改成 `docker compose up -d --build` 在本地构建。
 
