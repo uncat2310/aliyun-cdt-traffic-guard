@@ -22,7 +22,7 @@
 面板只负责看：当月已用、剩余额度、日均消耗、预计可用天数，以及 72H / 14D 走势。  
 真正的超额停机由 `scripts/auto_traffic_guard.py` 按节点单独跑，不和面板绑死。
 
-假数据 Demo：<https://honkai3rd.eu.org>
+假数据 Demo：<https://honkai3rd.eu.org>（备用 <https://demo.as4837.de>）
 
 - [1 台](https://honkai3rd.eu.org/?nodes=1)
 - [3 台](https://honkai3rd.eu.org/?nodes=3)
