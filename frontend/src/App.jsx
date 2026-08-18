@@ -29,13 +29,6 @@ const formatNum = (num, digits = 2) => {
   return Number(num).toFixed(digits);
 };
 
-const nodeCountLabel = (count) => {
-  if (!count || count <= 0) return '未配置';
-  if (count === 1) return '单机';
-  if (count === 2) return '两机';
-  return `${count}机`;
-};
-
 const serversGridClass = (count) => {
   if (count <= 1) return 'is-single';
   if (count === 2) return 'is-two';
@@ -595,8 +588,6 @@ export default function App() {
 
   const serverList = listServers(overview);
   const nodeTotal = overview?.summary?.nodes_total ?? serverList.length;
-  const countLabel = overview?.summary?.node_count_label || nodeCountLabel(nodeTotal);
-  const firstThreshold = serverList[0]?.traffic?.threshold_gb || 180;
 
   const summary = overview?.summary || {
     total_used_gb: 0,
@@ -605,14 +596,10 @@ export default function App() {
     total_percentage: 0,
     nodes_online: 0,
     nodes_total: nodeTotal,
-    running_count: 0,
-    node_count_label: countLabel
+    running_count: 0
   };
 
   const currentTheme = getThemeInfo();
-  const headerHint = nodeTotal <= 1
-    ? `阿里云 CDT 流量安全监控 · ${firstThreshold}GB 额度守护 · 超额自动停机`
-    : `阿里云 CDT 流量安全监控 · ${firstThreshold}GB/台 额度守护 · 超额自动停机`;
 
   return (
     <div className={`main-viewport ${serverList.length >= 3 ? 'is-tall' : ''}`}>
@@ -636,7 +623,6 @@ export default function App() {
                   <span className="badge-dot"></span> 守卫生效中
                 </span>
               </h1>
-              <p>{headerHint}</p>
             </div>
           </div>
 
@@ -711,7 +697,7 @@ export default function App() {
           <div className="summary-card">
             <SummaryRing percentage={summary.total_percentage} tone="used" />
             <div className="summary-meta">
-              <div className="label">{countLabel}总消耗</div>
+              <div className="label">总消耗</div>
               <div className="value">{formatNum(summary.total_used_gb, 2)} <small>GB</small></div>
             </div>
           </div>
@@ -719,8 +705,8 @@ export default function App() {
           <div className="summary-card">
             <SummaryRing percentage={Math.max(0, 100 - (Number(summary.total_percentage) || 0))} tone="remain" />
             <div className="summary-meta">
-              <div className="label">剩余安全额度</div>
-              <div className="value" style={{ color: '#10b981' }}>{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
+              <div className="label">总安全额度</div>
+              <div className="value is-remain">{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
             </div>
           </div>
 
@@ -729,8 +715,8 @@ export default function App() {
               <Wifi size={18} />
             </div>
             <div className="summary-meta">
-              <div className="label">节点运行状态</div>
-              <div className="value">{summary.running_count || 0} / {summary.nodes_total || 0} <small>正常</small></div>
+              <div className="label">运行状态</div>
+              <div className="value">{summary.running_count || 0}<span className="value-sep">/</span>{summary.nodes_total || 0}</div>
             </div>
           </div>
 
@@ -739,8 +725,8 @@ export default function App() {
               <Clock size={18} />
             </div>
             <div className="summary-meta">
-              <div className="label">最近同步时间</div>
-              <div className="value" style={{ fontSize: '1.02rem' }}>{lastUpdated || '实时同步'}</div>
+              <div className="label">同步时间</div>
+              <div className="value is-time">{lastUpdated || '--:--:--'}</div>
             </div>
           </div>
         </section>
