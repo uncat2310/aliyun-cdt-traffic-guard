@@ -32,9 +32,29 @@ const formatNum = (num, digits = 2) => {
 const serversGridClass = (count) => {
   if (count <= 1) return 'is-single';
   if (count === 2) return 'is-two';
-  if (count === 3) return 'is-three is-compact';
+  if (count === 3) return 'is-three';
   if (count === 4) return 'is-four';
-  return 'is-many is-compact';
+  return 'is-many';
+};
+
+const trafficHealth = (daysLeft) => {
+  const days = Number(daysLeft);
+  if (!Number.isFinite(days)) return { key: 'ok', label: '健康' };
+  if (days < 7) return { key: 'critical', label: '即将耗尽' };
+  if (days < 15) return { key: 'warn', label: '流量预警' };
+  if (days < 30) return { key: 'elevated', label: '流量偏高' };
+  return { key: 'ok', label: '健康' };
+};
+
+const hourlyValuesFor = (historyData, serverId) => {
+  const hourly = historyData?.hourly || [];
+  return hourly.map((point) => getHourlyVal(point, serverId));
+};
+
+const gaugeColor = (percentage) => {
+  if (percentage >= 85) return '#f43f5e';
+  if (percentage >= 65) return '#f59e0b';
+  return '#0ea5e9';
 };
 
 const listServers = (overview) => {
@@ -73,32 +93,20 @@ const getDailyVal = (point, seriesId) => {
   return Number(point?.[`${seriesId}_delta_gb`]) || 0;
 };
 
-const SummaryRing = ({ percentage = 0, tone = 'used' }) => {
-  const size = 44;
-  const stroke = 4.5;
+const DonutGauge = ({ percentage = 0, size = 72, stroke = 7 }) => {
+  const pct = Math.min(Math.max(Number(percentage) || 0, 0), 100);
   const radius = (size - stroke) / 2;
   const cx = size / 2;
-  const pct = Math.min(Math.max(Number(percentage) || 0, 0), 100);
   const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - (pct / 100) * circumference;
-
-  let color = '#0ea5e9';
-  if (tone === 'remain') {
-    if (pct <= 15) color = '#f43f5e';
-    else if (pct <= 35) color = '#f59e0b';
-    else color = '#10b981';
-  } else if (pct >= 85) {
-    color = '#f43f5e';
-  } else if (pct >= 65) {
-    color = '#f59e0b';
-  }
+  const color = gaugeColor(pct);
 
   return (
-    <div className={`summary-ring summary-ring-${tone}`}>
+    <div className="donut-gauge" style={{ width: size, height: size }}>
       <svg viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        <circle className="summary-ring-track" strokeWidth={stroke} fill="none" r={radius} cx={cx} cy={cx} />
+        <circle className="donut-track" strokeWidth={stroke} fill="none" r={radius} cx={cx} cy={cx} />
         <circle
-          className="summary-ring-progress"
+          className="donut-progress"
           stroke={color}
           strokeWidth={stroke}
           strokeDasharray={`${circumference} ${circumference}`}
@@ -110,7 +118,49 @@ const SummaryRing = ({ percentage = 0, tone = 'used' }) => {
           cy={cx}
         />
       </svg>
-      <span className="summary-ring-text" style={{ color }}>{formatNum(pct, 0)}%</span>
+      <div className="donut-center">
+        <span className="donut-pct" style={{ color }}>{formatNum(pct, 0)}%</span>
+      </div>
+    </div>
+  );
+};
+
+const Sparkline = ({ values = [], color = '#0ea5e9' }) => {
+  const width = 280;
+  const height = 72;
+  const pad = 3;
+  const gid = `spark-${color.replace('#', '')}`;
+
+  if (!values.length) {
+    return <div className="sparkline is-empty">暂无趋势</div>;
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const points = values.map((value, idx) => {
+    const x = pad + (idx / (values.length - 1 || 1)) * (width - pad * 2);
+    const y = height - pad - ((value - min) / span) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = points.map((point, idx) => `${idx === 0 ? 'M' : 'L'}${point.replace(',', ' ')}`).join(' ');
+  const last = points[points.length - 1].split(',');
+  const first = points[0].split(',');
+  const area = `${line} L ${last[0]} ${height} L ${first[0]} ${height} Z`;
+
+  return (
+    <div className="sparkline">
+      <div className="sparkline-caption">近 72 小时</div>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="sparkline-svg" aria-hidden="true">
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${gid})`} />
+        <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
     </div>
   );
 };
@@ -450,62 +500,84 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   );
 };
 
-const ServerCard = ({ data }) => {
+const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
   if (!data) return null;
 
   const traffic = data.traffic || {};
   const isRunning = data.status === 'Running';
-  const usedPct = Math.min(traffic.percentage || 0, 100);
+  const usedPct = Math.min(Number(traffic.percentage) || 0, 100);
+  const threshold = traffic.threshold_gb ?? 180;
   const daysLeft = traffic.days_left_est;
-  const daysHot = daysLeft < 10;
-  const barColor = usedPct >= 85
-    ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
-    : 'linear-gradient(90deg, #38bdf8, #10b981)';
+  const health = trafficHealth(daysLeft);
+  const daysText = daysLeft > 90 ? '> 90 天' : `${formatNum(daysLeft ?? 0, 0)} 天`;
+  const isHero = variant === 'hero';
 
   return (
-    <div className={`server-card ${isRunning ? 'is-online' : 'is-offline'}`}>
-      <div className="card-top-header">
-        <div className="server-main-title">
-          <span className="node-name">{data.name || data.id || '节点'}</span>
-          <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
+    <article className={`server-card ${isHero ? 'is-hero' : 'is-compact'} ${isRunning ? 'is-online' : 'is-offline'}`}>
+      <header className="card-top-header">
+        <div className="node-id">
+          <div className="node-name">{data.name || data.id || '节点'}</div>
+          <div className="node-ip">{data.ip || '*.*.*.*'}</div>
         </div>
-        <span className={`status-text ${isRunning ? 'is-on' : 'is-off'}`}>
-          <span className="dot"></span>
-          {isRunning ? '运行中' : '已关机'}
-        </span>
+        <div className="node-flags">
+          <span className={`status-text ${isRunning ? 'is-on' : 'is-off'}`}>
+            <span className="dot"></span>
+            {isRunning ? '运行中' : '已关机'}
+          </span>
+          {isRunning && (
+            <span className={`health-chip is-${health.key}`}>{health.label}</span>
+          )}
+        </div>
+      </header>
+
+      <div className="card-gauge">
+        <DonutGauge percentage={usedPct} size={isHero ? 120 : 72} stroke={isHero ? 10 : 7} />
       </div>
 
-      <div className="card-hero">
-        <div className="hero-main">
-          <div className="hero-value">
+      <div className="card-stats">
+        <div className="used-block">
+          <div className="used-value">
             {formatNum(traffic.used_gb, 2)}
             <small>GB</small>
           </div>
-          <div className="hero-label">本月已用 {formatNum(usedPct, 0)}%</div>
+          <div className="used-caption">本月已用 / {formatNum(threshold, 0)} GB</div>
+        </div>
+        <div className="kpi-grid">
+          <div className="kpi-item">
+            <div className="kpi-num">{formatNum(traffic.remaining_gb, 2)} <small>GB</small></div>
+            <div className="kpi-lab">剩余额度</div>
+          </div>
+          <div className="kpi-item">
+            <div className="kpi-num">{formatNum(traffic.daily_avg_gb, 2)} <small>GB/d</small></div>
+            <div className="kpi-lab">日均消耗</div>
+          </div>
+          <div className="kpi-item">
+            <div className={`kpi-num ${daysLeft < 10 ? 'is-hot' : ''}`}>{daysText}</div>
+            <div className="kpi-lab">预计可用</div>
+          </div>
         </div>
       </div>
 
-      <div className="progress-bar-wrap is-hero">
-        <div className="progress-bar-fill" style={{ width: `${usedPct}%`, background: barColor }}></div>
+      <div className="card-spark">
+        <Sparkline values={sparkline} color={gaugeColor(usedPct)} />
       </div>
 
-      <div className="card-meta">
-        <div className="meta-item">
-          <span className="k">剩余</span>
-          <span className="v">{formatNum(traffic.remaining_gb, 2)} GB</span>
+      {isHero && (
+        <div className="card-quota-bar">
+          <div className="progress-bar-wrap is-hero">
+            <div
+              className="progress-bar-fill"
+              style={{
+                width: `${usedPct}%`,
+                background: usedPct >= 85
+                  ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
+                  : 'linear-gradient(90deg, #38bdf8, #10b981)'
+              }}
+            ></div>
+          </div>
         </div>
-        <div className="meta-item">
-          <span className="k">日均</span>
-          <span className="v">{formatNum(traffic.daily_avg_gb, 2)} GB</span>
-        </div>
-        <div className="meta-item">
-          <span className="k">可用</span>
-          <span className={`v ${daysHot ? 'is-hot' : ''}`}>
-            {daysLeft > 90 ? '> 90 天' : `${formatNum(daysLeft ?? 0, 0)} 天`}
-          </span>
-        </div>
-      </div>
-    </div>
+      )}
+    </article>
   );
 };
 
@@ -620,6 +692,9 @@ export default function App() {
   };
 
   const currentTheme = getThemeInfo();
+  const fleetDaily = serverList.reduce((sum, node) => sum + (Number(node.traffic?.daily_avg_gb) || 0), 0);
+  const fleetDays = fleetDaily > 0 ? Math.round(summary.total_remaining_gb / fleetDaily) : null;
+  const isHeroLayout = serverList.length === 1;
 
   return (
     <div className={`main-viewport ${serverList.length >= 3 ? 'is-tall' : ''}`}>
@@ -710,18 +785,23 @@ export default function App() {
 
         <section className="summary-grid">
           <div className="summary-card">
-            <SummaryRing percentage={summary.total_percentage} tone="used" />
+            <DonutGauge percentage={summary.total_percentage} size={44} stroke={4.5} />
             <div className="summary-meta">
-              <div className="label">总消耗</div>
-              <div className="value">{formatNum(summary.total_used_gb, 2)} <small>GB</small></div>
+              <div className="label">总流量</div>
+              <div className="value">
+                {formatNum(summary.total_used_gb, 2)}
+                <small>/ {formatNum(summary.total_threshold_gb, 0)} GB</small>
+              </div>
             </div>
           </div>
 
           <div className="summary-card">
-            <SummaryRing percentage={Math.max(0, 100 - (Number(summary.total_percentage) || 0))} tone="remain" />
             <div className="summary-meta">
-              <div className="label">总安全额度</div>
+              <div className="label">剩余额度</div>
               <div className="value is-remain">{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
+              {fleetDays != null && (
+                <div className="summary-hint">按当前速度约 {fleetDays > 90 ? '> 90' : fleetDays} 天</div>
+              )}
             </div>
           </div>
 
@@ -730,8 +810,8 @@ export default function App() {
               <Wifi size={18} />
             </div>
             <div className="summary-meta">
-              <div className="label">运行状态</div>
-              <div className="value">{summary.running_count || 0}<span className="value-sep">/</span>{summary.nodes_total || 0}</div>
+              <div className="label">节点状态</div>
+              <div className="value">{summary.running_count || 0}<span className="value-sep">/</span>{summary.nodes_total || 0} <small>在线</small></div>
             </div>
           </div>
 
@@ -740,7 +820,7 @@ export default function App() {
               <Clock size={18} />
             </div>
             <div className="summary-meta">
-              <div className="label">同步时间</div>
+              <div className="label">数据同步</div>
               <div className="value is-time">{lastUpdated || '--:--:--'}</div>
             </div>
           </div>
@@ -752,7 +832,12 @@ export default function App() {
             data-count={serverList.length}
           >
             {serverList.map((server) => (
-              <ServerCard key={server.id} data={server} />
+              <ServerCard
+                key={server.id}
+                data={server}
+                variant={isHeroLayout ? 'hero' : 'compact'}
+                sparkline={hourlyValuesFor(history, server.id)}
+              />
             ))}
           </main>
         ) : (

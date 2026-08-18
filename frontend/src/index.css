@@ -39,11 +39,11 @@
   --badge-offline-dot: #f43f5e;
   --gauge-track: rgba(255, 255, 255, 0.12);
 
-  --card-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4), 0 0 1px 1px var(--border-subtle);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 0 1px 1px var(--border-strong);
   --radius-sm: 8px;
   --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-lg: 20px;
 }
 
 body.light-theme {
@@ -55,8 +55,8 @@ body.light-theme {
   --bg-inset: #f1f5f9;
   --bg-glass: rgba(0, 0, 0, 0.02);
 
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.15);
+  --border-subtle: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.16);
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
@@ -72,7 +72,7 @@ body.light-theme {
   --badge-online-dot: #10b981;
   --gauge-track: rgba(15, 23, 42, 0.1);
 
-  --card-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.06), 0 0 1px 1px var(--border-subtle);
+  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.12), 0 0 1px 1px var(--border-strong);
 }
 
@@ -423,14 +423,18 @@ body.dark-theme .brand-wordmark {
   font-weight: 500;
 }
 
-.summary-ring {
+.summary-hint {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.donut-gauge {
   position: relative;
-  width: 44px;
-  height: 44px;
   flex-shrink: 0;
 }
 
-.summary-ring svg {
+.donut-gauge svg {
   width: 100%;
   height: 100%;
   display: block;
@@ -438,75 +442,53 @@ body.dark-theme .brand-wordmark {
   transform-origin: center;
 }
 
-.summary-ring-track {
+.donut-track {
   stroke: var(--gauge-track);
 }
 
-.summary-ring-text {
+.donut-progress {
+  transition: stroke-dashoffset 0.7s ease;
+}
+
+.donut-center {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
 }
 
-/* 主服务器卡片网格：按台数切换列数，避免多机挤成难看的 2 列长条 */
+.donut-pct {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-size: 0.95rem;
+}
+
+.summary-card .donut-pct {
+  font-size: 0.62rem;
+}
+
+.server-card.is-hero .donut-pct {
+  font-size: 1.35rem;
+}
+
 .servers-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.servers-grid.is-single {
-  grid-template-columns: 1fr;
-}
-
-.servers-grid.is-single .server-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "head head"
-    "hero meta"
-    "bar bar";
-  column-gap: 48px;
-  row-gap: 12px;
-  align-items: end;
-}
-
-.servers-grid.is-single .card-top-header { grid-area: head; }
-.servers-grid.is-single .card-hero { grid-area: hero; }
-.servers-grid.is-single .progress-bar-wrap { grid-area: bar; }
-.servers-grid.is-single .card-meta {
-  grid-area: meta;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  padding-top: 0;
-}
-
-.servers-grid.is-single .meta-item .v {
-  font-size: 0.98rem;
-}
-
+.servers-grid.is-single { grid-template-columns: 1fr; }
 .servers-grid.is-two,
-.servers-grid.is-four {
-  grid-template-columns: repeat(2, 1fr);
-}
-
+.servers-grid.is-four { grid-template-columns: repeat(2, 1fr); }
 .servers-grid.is-three,
-.servers-grid.is-many {
-  grid-template-columns: repeat(3, 1fr);
-}
+.servers-grid.is-many { grid-template-columns: repeat(3, 1fr); }
 
 .servers-grid > .server-card {
   min-width: 0;
 }
 
-/* 3 列时最后一行只剩 1 张：居中，不孤零零靠左 */
 @media (min-width: 1181px) {
   .servers-grid.is-three .server-card:last-child:nth-child(3n + 1),
   .servers-grid.is-many .server-card:last-child:nth-child(3n + 1) {
@@ -516,7 +498,6 @@ body.dark-theme .brand-wordmark {
     justify-self: center;
   }
 
-  /* 5 张：第一行 3 张，第二行 2 张作为一组居中，避免右侧空一列 */
   .servers-grid.is-many[data-count="5"] {
     grid-template-columns: repeat(6, 1fr);
   }
@@ -532,34 +513,6 @@ body.dark-theme .brand-wordmark {
   .servers-grid.is-many[data-count="5"] .server-card:nth-child(5) {
     grid-column: 4 / 6;
   }
-}
-
-/* 三台及以上：卡片内部收紧，窄列也能放下标题和指标 */
-.servers-grid.is-compact .server-card {
-  padding: 14px 14px;
-  gap: 10px;
-}
-
-.servers-grid.is-compact .card-top-header {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-}
-
-.servers-grid.is-compact .server-main-title {
-  flex-wrap: wrap;
-}
-
-.servers-grid.is-compact .node-name {
-  font-size: 1rem;
-}
-
-.servers-grid.is-compact .hero-value {
-  font-size: 1.7rem;
-}
-
-.servers-grid.is-compact .card-meta {
-  gap: 8px 12px;
 }
 
 .empty-config-card {
@@ -585,13 +538,9 @@ body.dark-theme .brand-wordmark {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 20px 22px 16px;
+  padding: 22px 24px 18px;
   box-shadow: var(--card-shadow);
-  backdrop-filter: blur(16px);
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
   overflow: hidden;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
@@ -601,45 +550,72 @@ body.dark-theme .brand-wordmark {
   transform: translateY(-1px);
 }
 
+.server-card.is-hero {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1.15fr) minmax(200px, 0.95fr);
+  grid-template-areas:
+    "head head head"
+    "gauge stats spark"
+    "bar bar bar";
+  column-gap: 28px;
+  row-gap: 16px;
+  align-items: center;
+}
+
+.server-card.is-hero .card-top-header { grid-area: head; }
+.server-card.is-hero .card-gauge { grid-area: gauge; justify-self: center; }
+.server-card.is-hero .card-stats { grid-area: stats; }
+.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; }
+.server-card.is-hero .card-quota-bar { grid-area: bar; }
+
+.server-card.is-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .card-top-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.server-main-title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.node-id {
   min-width: 0;
 }
 
 .node-name {
-  font-size: 0.98rem;
+  font-size: 1.15rem;
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
-  white-space: nowrap;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
 }
 
-.masked-ip-pill {
+.node-ip {
+  margin-top: 3px;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  white-space: nowrap;
 }
 
-.status-text {
+.node-flags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.status-text,
+.health-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  flex-shrink: 0;
 }
 
 .status-text.is-on { color: var(--badge-online-text); }
@@ -650,39 +626,130 @@ body.dark-theme .brand-wordmark {
   height: 6px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 
-.card-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
+.health-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--badge-online-text);
 }
 
-.hero-value {
+.health-chip.is-elevated {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.health-chip.is-warn,
+.health-chip.is-critical {
+  background: rgba(244, 63, 94, 0.1);
+  color: #e11d48;
+}
+
+.used-value {
   font-family: var(--font-mono);
-  font-size: 2.15rem;
+  font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.06em;
-  line-height: 0.92;
+  letter-spacing: -0.05em;
+  line-height: 1;
   color: var(--text-primary);
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
-.hero-value small {
-  font-size: 0.82rem;
+.used-value small,
+.kpi-num small {
+  font-size: 0.78rem;
   font-weight: 600;
+  color: var(--text-muted);
   letter-spacing: 0;
+}
+
+.used-caption {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.kpi-num {
+  font-family: var(--font-mono);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
+.kpi-num.is-hot { color: #e11d48; }
+
+.kpi-lab {
+  margin-top: 3px;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
-.hero-label {
-  margin-top: 6px;
-  font-size: 0.72rem;
-  color: var(--text-secondary);
+.server-card.is-compact {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "head head"
+    "gauge stats"
+    "spark spark";
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.server-card.is-compact .card-top-header { grid-area: head; }
+.server-card.is-compact .card-gauge { grid-area: gauge; }
+.server-card.is-compact .card-stats { grid-area: stats; min-width: 0; }
+.server-card.is-compact .card-spark { grid-area: spark; }
+
+.server-card.is-compact .used-value {
+  font-size: 1.7rem;
+}
+
+.server-card.is-compact .kpi-grid {
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.server-card.is-compact .kpi-num {
+  font-size: 0.92rem;
+}
+
+.sparkline {
+  min-width: 0;
+}
+
+.sparkline-caption {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.sparkline-svg {
+  width: 100%;
+  height: 64px;
+  display: block;
+}
+
+.sparkline.is-empty {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.server-card.is-hero .sparkline-svg {
+  height: 78px;
 }
 
 .progress-bar-wrap {
@@ -694,45 +761,13 @@ body.dark-theme .brand-wordmark {
 }
 
 .progress-bar-wrap.is-hero {
-  height: 6px;
-  margin-top: 2px;
+  height: 5px;
 }
 
 .progress-bar-fill {
   height: 100%;
   border-radius: 99px;
   transition: width 0.6s ease;
-}
-
-.card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  padding-top: 2px;
-}
-
-.meta-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-.meta-item .k {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.meta-item .v {
-  font-family: var(--font-mono);
-  font-size: 0.84rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-.meta-item .v.is-hot {
-  color: #f43f5e;
 }
 
 /* 底部规格参数 */
@@ -975,6 +1010,22 @@ body.dark-theme .brand-wordmark {
 }
 
 /* 中等宽度：3 列收成 2 列，奇数最后一张居中 */
+@media (max-width: 980px) {
+  .server-card.is-hero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "head"
+      "gauge"
+      "stats"
+      "spark"
+      "bar";
+  }
+
+  .server-card.is-hero .card-gauge {
+    justify-self: start;
+  }
+}
+
 @media (max-width: 1180px) and (min-width: 769px) {
   .dashboard-container.is-wide {
     max-width: 1080px;
@@ -1051,24 +1102,29 @@ body.dark-theme .brand-wordmark {
     justify-self: stretch;
   }
 
-  .server-card,
-  .servers-grid.is-single .server-card {
-    display: flex;
-    padding: 16px 16px 14px;
+  .server-card.is-hero,
+  .server-card.is-compact {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "head"
+      "gauge"
+      "stats"
+      "spark"
+      "bar";
+    padding: 16px;
     gap: 12px;
   }
 
-  .servers-grid.is-single .card-meta {
-    flex-direction: row;
-    align-items: baseline;
-  }
-
   .node-name {
-    font-size: 0.95rem;
+    font-size: 1.05rem;
   }
 
-  .hero-value {
-    font-size: 1.85rem;
+  .used-value {
+    font-size: 1.75rem;
+  }
+
+  .kpi-grid {
+    gap: 8px;
   }
 
   .analytics-section {
