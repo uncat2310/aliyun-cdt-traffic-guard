@@ -389,12 +389,35 @@ body {
   color: var(--text-muted);
 }
 
-.summary-meta .subtext {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.summary-ring {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.summary-ring svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+
+.summary-ring-track {
+  stroke: var(--gauge-track);
+}
+
+.summary-ring-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* 主服务器卡片网格：按台数切换列数，避免多机挤成难看的 2 列长条 */

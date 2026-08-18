@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  ShieldCheck,
   RefreshCw,
   Sun,
   Moon,
@@ -8,7 +7,6 @@ import {
   Check,
   TrendingUp,
   Clock,
-  HardDrive,
   Wifi,
   ChevronDown
 } from 'lucide-react';
@@ -122,6 +120,48 @@ const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
         <div className="gauge-val-pct">{formatNum(percentage, 1)}%</div>
         <div className="gauge-sublabel">已用</div>
       </div>
+    </div>
+  );
+};
+
+const SummaryRing = ({ percentage = 0, tone = 'used' }) => {
+  const size = 44;
+  const stroke = 4.5;
+  const radius = (size - stroke) / 2;
+  const cx = size / 2;
+  const pct = Math.min(Math.max(Number(percentage) || 0, 0), 100);
+  const circumference = radius * 2 * Math.PI;
+  const strokeDashoffset = circumference - (pct / 100) * circumference;
+
+  let color = '#0ea5e9';
+  if (tone === 'remain') {
+    if (pct <= 15) color = '#f43f5e';
+    else if (pct <= 35) color = '#f59e0b';
+    else color = '#10b981';
+  } else if (pct >= 85) {
+    color = '#f43f5e';
+  } else if (pct >= 65) {
+    color = '#f59e0b';
+  }
+
+  return (
+    <div className={`summary-ring summary-ring-${tone}`}>
+      <svg viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle className="summary-ring-track" strokeWidth={stroke} fill="none" r={radius} cx={cx} cy={cx} />
+        <circle
+          className="summary-ring-progress"
+          stroke={color}
+          strokeWidth={stroke}
+          strokeDasharray={`${circumference} ${circumference}`}
+          style={{ strokeDashoffset }}
+          strokeLinecap="round"
+          fill="none"
+          r={radius}
+          cx={cx}
+          cy={cx}
+        />
+      </svg>
+      <span className="summary-ring-text" style={{ color }}>{formatNum(pct, 0)}%</span>
     </div>
   );
 };
@@ -669,24 +709,18 @@ export default function App() {
 
         <section className="summary-grid">
           <div className="summary-card">
-            <div className="summary-icon icon-blue">
-              <HardDrive size={18} />
-            </div>
+            <SummaryRing percentage={summary.total_percentage} tone="used" />
             <div className="summary-meta">
               <div className="label">{countLabel}总消耗</div>
               <div className="value">{formatNum(summary.total_used_gb, 2)} <small>GB</small></div>
-              <div className="subtext">总额度 {summary.total_threshold_gb} GB ({summary.total_percentage}%)</div>
             </div>
           </div>
 
           <div className="summary-card">
-            <div className="summary-icon icon-emerald">
-              <ShieldCheck size={18} />
-            </div>
+            <SummaryRing percentage={Math.max(0, 100 - (Number(summary.total_percentage) || 0))} tone="remain" />
             <div className="summary-meta">
               <div className="label">剩余安全额度</div>
               <div className="value" style={{ color: '#10b981' }}>{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
-              <div className="subtext">超额自动关机保安全</div>
             </div>
           </div>
 
@@ -697,7 +731,6 @@ export default function App() {
             <div className="summary-meta">
               <div className="label">节点运行状态</div>
               <div className="value">{summary.running_count || 0} / {summary.nodes_total || 0} <small>正常</small></div>
-              <div className="subtext">BGP 专线防护中</div>
             </div>
           </div>
 
@@ -708,7 +741,6 @@ export default function App() {
             <div className="summary-meta">
               <div className="label">最近同步时间</div>
               <div className="value" style={{ fontSize: '1.02rem' }}>{lastUpdated || '实时同步'}</div>
-              <div className="subtext">每分钟防护监测</div>
             </div>
           </div>
         </section>
