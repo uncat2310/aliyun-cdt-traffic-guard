@@ -215,8 +215,26 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const barSlot = Math.max(1, series.length);
 
   const updateHover = (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * chartWidth;
+    const wrap = event.currentTarget.parentElement;
+    const svg = wrap?.querySelector('svg.chart-svg');
+    if (!wrap) return;
+
+    const wrapRect = wrap.getBoundingClientRect();
+    let x = ((event.clientX - wrapRect.left) / wrapRect.width) * chartWidth;
+
+    try {
+      const ctm = svg?.getScreenCTM();
+      if (ctm) {
+        const mapped = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse()).x;
+        if (Number.isFinite(mapped)) x = mapped;
+      }
+    } catch (err) {
+      // keep the stretched-box fallback
+    }
+
+    const tooltipLeft = event.clientX - wrapRect.left;
+    const flip = tooltipLeft > wrapRect.width * 0.68;
+
     if (x < padLeft || x > padLeft + graphW) {
       setHover(null);
       return;
@@ -225,13 +243,19 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
       const idx = Math.round(((x - padLeft) / graphW) * (hourly.length - 1));
       const safeIdx = Math.min(hourly.length - 1, Math.max(0, idx));
       const px = padLeft + (safeIdx / (hourly.length - 1 || 1)) * graphW;
-      setHover({ kind: 'hourly', idx: safeIdx, x: px });
+      setHover({ kind: 'hourly', idx: safeIdx, x: px, tooltipLeft, flip });
       return;
     }
     if (activeTab === 'daily' && daily.length) {
       const idx = Math.min(daily.length - 1, Math.max(0, Math.floor(((x - padLeft) / graphW) * daily.length)));
       const groupW = graphW / daily.length;
-      setHover({ kind: 'daily', idx, x: padLeft + idx * groupW + groupW / 2 });
+      setHover({
+        kind: 'daily',
+        idx,
+        x: padLeft + idx * groupW + groupW / 2,
+        tooltipLeft,
+        flip
+      });
     }
   };
 
@@ -279,6 +303,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         {activeTab === 'hourly' ? (
           <svg
             viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            preserveAspectRatio="none"
             className="chart-svg"
           >
             <defs>
@@ -374,6 +399,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         ) : (
           <svg
             viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            preserveAspectRatio="none"
             className="chart-svg"
           >
             {[0, 0.33, 0.66, 1].map((ratio, i) => {
@@ -444,8 +470,8 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
 
         {hover && hoverPoint && (
           <div
-            className={`chart-tooltip ${hover.x > chartWidth * 0.68 ? 'is-left' : ''}`}
-            style={{ left: `${(hover.x / chartWidth) * 100}%` }}
+            className={`chart-tooltip ${hover.flip ? 'is-left' : ''}`}
+            style={{ left: `${hover.tooltipLeft}px` }}
           >
             <div className="chart-tooltip-time">{hoverLabel}</div>
             {series.map((item) => {
