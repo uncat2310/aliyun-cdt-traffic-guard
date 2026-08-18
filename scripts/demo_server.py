@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Local fake-data demo for odd-count node card layouts (1 / 3 / 5)."""
+"""Public fake-data demo. Always renders three nodes."""
 
 from __future__ import annotations
 
@@ -8,14 +8,13 @@ import json
 import os
 from datetime import datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(ROOT, "frontend", "dist")
 HOST = os.environ.get("DEMO_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DEMO_PORT", "8388"))
-ALLOWED_COUNTS = (1, 3, 5)
-DEFAULT_COUNT = 3
+NODE_COUNT = 3
 
 COLORS = (
     "#0ea5e9",
@@ -62,39 +61,7 @@ CATALOG = (
         "memory": 1.0,
         "daily_avg_gb": 5.07,
     },
-    {
-        "id": "server4",
-        "name": "新加坡节点 04",
-        "ip": "192.168.16.*",
-        "region_id": "ap-southeast-1",
-        "region_name": "阿里云新加坡",
-        "used_gb": 12.40,
-        "status": "Stopped",
-        "cpu": 2,
-        "memory": 0.5,
-        "daily_avg_gb": 0.69,
-    },
-    {
-        "id": "server5",
-        "name": "美西节点 05",
-        "ip": "172.16.1.*",
-        "region_id": "us-west-1",
-        "region_name": "阿里云美西",
-        "used_gb": 67.80,
-        "status": "Running",
-        "cpu": 4,
-        "memory": 2.0,
-        "daily_avg_gb": 3.77,
-    },
 )
-
-
-def clamp_count(raw, fallback=DEFAULT_COUNT):
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return fallback
-    return value if value in ALLOWED_COUNTS else fallback
 
 
 def node_count_label(count):
@@ -229,59 +196,6 @@ def build_history(count):
     }
 
 
-SWITCHER_HTML = """
-<style>
-  .demo-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    height: 46px;
-    background: rgba(15, 23, 42, 0.92);
-    color: #e2e8f0;
-    font: 13px/1.2 Inter, system-ui, sans-serif;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
-  }
-  .demo-bar a {
-    color: #cbd5e1;
-    text-decoration: none;
-    padding: 5px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(148,163,184,0.35);
-  }
-  .demo-bar a.active {
-    background: #0ea5e9;
-    border-color: #0ea5e9;
-    color: #fff;
-    font-weight: 700;
-  }
-  body { padding-top: 46px !important; }
-</style>
-<div class="demo-bar">
-  <strong>假数据 Demo</strong>
-  <span>看奇数卡片布局</span>
-  <a href="/?nodes=1">1 台</a>
-  <a href="/?nodes=3">3 台</a>
-  <a href="/?nodes=5">5 台</a>
-</div>
-"""
-
-
-def switcher_for(count):
-    html = SWITCHER_HTML
-    for option in ALLOWED_COUNTS:
-        needle = f'href="/?nodes={option}"'
-        if option == count:
-            html = html.replace(needle, f'{needle} class="active"', 1)
-    return html
-
-
 class DemoHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=STATIC_DIR, **kwargs)
@@ -290,64 +204,48 @@ class DemoHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
-    def _count_from_request(self):
-        parsed = urlparse(self.path)
-        query = parse_qs(parsed.query)
-        if "nodes" in query:
-            return clamp_count(query["nodes"][0])
-        cookie = self.headers.get("Cookie", "")
-        for part in cookie.split(";"):
-            if part.strip().startswith("demo_nodes="):
-                return clamp_count(part.split("=", 1)[1])
-        return DEFAULT_COUNT
-
-    def _send_json(self, data, count):
+    def _send_json(self, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Set-Cookie", f"demo_nodes={count}; Path=/; SameSite=Lax")
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        count = self._count_from_request()
+        path = urlparse(self.path).path
 
         if path in ("/api/overview", "/api/stats"):
-            self._send_json(build_overview(count), count)
+            self._send_json(build_overview(NODE_COUNT))
             return
         if path == "/api/history":
-            self._send_json(build_history(count), count)
+            self._send_json(build_history(NODE_COUNT))
             return
 
         if path in ("/", "/index.html"):
-            self._serve_index(count)
+            self._serve_index()
             return
 
         super().do_GET()
 
-    def _serve_index(self, count):
+    def _serve_index(self):
         index_path = os.path.join(STATIC_DIR, "index.html")
         with open(index_path, "r", encoding="utf-8") as handle:
             html = handle.read()
         payload = {
-            "overview": build_overview(count),
-            "history": build_history(count),
+            "overview": build_overview(NODE_COUNT),
+            "history": build_history(NODE_COUNT),
         }
         injected = (
             "<script>try{localStorage.setItem('traffic_guard_theme','light');}catch(e){}</script>"
             f"<script>window.__INITIAL_DATA__ = {json.dumps(payload, ensure_ascii=False)};</script>"
-            + switcher_for(count)
-            + "</head>"
+            "</head>"
         )
         html = html.replace("</head>", injected, 1)
         body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Set-Cookie", f"demo_nodes={count}; Path=/; SameSite=Lax")
         self.end_headers()
         self.wfile.write(body)
 
@@ -360,10 +258,7 @@ def main():
         raise SystemExit(f"frontend dist missing: {STATIC_DIR}  (run npm run build first)")
 
     server = ThreadingHTTPServer((HOST, PORT), DemoHandler)
-    print(f"Fake demo ready: http://{HOST}:{PORT}/?nodes=3")
-    print("  1 card:  http://127.0.0.1:8388/?nodes=1")
-    print("  3 cards: http://127.0.0.1:8388/?nodes=3")
-    print("  5 cards: http://127.0.0.1:8388/?nodes=5")
+    print(f"Demo ready: http://{HOST}:{PORT}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

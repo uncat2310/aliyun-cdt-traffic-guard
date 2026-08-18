@@ -1,3 +1,10 @@
+# 用法：
+#   1. cp backend/config.example.json config.json
+#   2. 编辑 config.json 填入 AccessKey 和实例 ID
+#   3. docker compose up -d
+# 面板：http://服务器IP:8388
+# 镜像由 GitHub Actions 推送到 ghcr.io/uncat2310/aliyun-cdt-traffic-guard
+
 services:
   aliyun-cdt-traffic-guard:
     image: ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
@@ -7,6 +14,7 @@ services:
     ports:
       - "8388:8388"
     volumes:
-      - ./config.json:/app/config.json
+      - ./config.json:/app/config.json:ro
+      - ./history:/app/history
     environment:
       - PORT=8388

@@ -12,8 +12,12 @@ env/
 
 # Configuration files with secrets
 backend/config.json
+/config.json
+/history/
 *.log
 *.log.*
+
+docs/images/.edge-profile/
 
 # OS files
 .DS_Store

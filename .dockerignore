@@ -1,0 +1,11 @@
+**/node_modules
+**/__pycache__
+**/.venv
+**/dist
+demo-shots
+.git
+.github
+*.log
+config.json
+history
+docs
