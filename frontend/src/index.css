@@ -429,6 +429,23 @@ body {
     max-width: calc(33.333% - 11px);
     justify-self: center;
   }
+
+  /* 5 张：第一行 3 张，第二行 2 张作为一组居中，避免右侧空一列 */
+  .servers-grid.is-many[data-count="5"] {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .servers-grid.is-many[data-count="5"] .server-card {
+    grid-column: span 2;
+  }
+
+  .servers-grid.is-many[data-count="5"] .server-card:nth-child(4) {
+    grid-column: 2 / 4;
+  }
+
+  .servers-grid.is-many[data-count="5"] .server-card:nth-child(5) {
+    grid-column: 4 / 6;
+  }
 }
 
 /* 三台及以上：卡片内部收紧，窄列也能放下标题和指标 */
