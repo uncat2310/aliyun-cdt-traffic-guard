@@ -29,7 +29,7 @@ CATALOG = (
     {
         "id": "server1",
         "name": "香港节点 01",
-        "ip": "43.99.*.*",
+        "ip": "10.0.1.*",
         "region_id": "cn-hongkong",
         "region_name": "阿里云香港",
         "used_gb": 44.53,
@@ -41,7 +41,7 @@ CATALOG = (
     {
         "id": "server2",
         "name": "香港节点 02",
-        "ip": "8.210.*.*",
+        "ip": "10.0.2.*",
         "region_id": "cn-hongkong",
         "region_name": "阿里云香港",
         "used_gb": 24.01,
@@ -53,7 +53,7 @@ CATALOG = (
     {
         "id": "server3",
         "name": "东京节点 03",
-        "ip": "47.74.*.*",
+        "ip": "192.168.8.*",
         "region_id": "ap-northeast-1",
         "region_name": "阿里云东京",
         "used_gb": 91.20,
@@ -65,7 +65,7 @@ CATALOG = (
     {
         "id": "server4",
         "name": "新加坡节点 04",
-        "ip": "8.219.*.*",
+        "ip": "192.168.16.*",
         "region_id": "ap-southeast-1",
         "region_name": "阿里云新加坡",
         "used_gb": 12.40,
@@ -77,7 +77,7 @@ CATALOG = (
     {
         "id": "server5",
         "name": "美西节点 05",
-        "ip": "47.88.*.*",
+        "ip": "172.16.1.*",
         "region_id": "us-west-1",
         "region_name": "阿里云美西",
         "used_gb": 67.80,

@@ -66,7 +66,7 @@ cp backend/config.example.json config.json
     "hk-01": {
       "id": "hk-01",
       "name": "香港节点 01",
-      "masked_ip": "47.76.*.*",
+      "masked_ip": "10.0.1.*",
       "instance_id": "i-把这里换成你的实例ID",
       "region_id": "cn-hongkong",
       "ak": "把这里换成 AccessKey ID",

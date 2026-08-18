@@ -10,8 +10,8 @@
     "server1": {
       "id": "server1",
       "name": "香港节点 01",
-      "masked_ip": "43.99.*.*",
-      "ip": "43.99.0.1",
+      "masked_ip": "10.0.1.*",
+      "ip": "10.0.1.10",
       "instance_id": "i-xxxxxxxxxxxxxxxxx",
       "region_id": "cn-hongkong",
       "ak": "YOUR_ALIYUN_ACCESS_KEY_ID",
