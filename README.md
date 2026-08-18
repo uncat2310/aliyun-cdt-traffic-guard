@@ -38,11 +38,17 @@
 
 ## 部署
 
-需要：一台长期在线的 Linux 主机、Docker、一个阿里云 RAM 子账号。
+需要：一台长期在线的 Linux 主机、已安装并设为开机启动的 Docker、一个阿里云 RAM 子账号。
 
-镜像由 GitHub Actions 在每次推送 `main` 后自动构建并上传：
+官方镜像（推送 `main` 后由 GitHub Actions 自动构建）：
 
 `ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest`
+
+容器一启动就会跑后端：提供网页、每 60 秒查 CDT、按阈值开关机。你不用再手动执行 Python 脚本。
+
+`restart: unless-stopped` 的含义：容器崩溃会自动拉起；**这台主机重启后，只要 Docker 服务本身会开机启动，这个容器也会跟着起来。** Linux 上安装 Docker 后一般已经是开机自启。
+
+---
 
 ### 1. 创建 RAM 子账号
 
@@ -53,34 +59,11 @@
 
 记下 AccessKey ID / Secret。再到 [ECS 实例列表](https://ecs.console.aliyun.com/server/region/cn-hongkong) 复制实例 ID（`i-...`）和地域 ID（香港是 `cn-hongkong`）。
 
-### 2. 准备配置
+---
 
-代码已经在本地的话，先进入项目根目录（和 `docker-compose.yml` 同一层）。还没有代码就先克隆：
+### 2. 写 `config.json`
 
-```bash
-git clone https://github.com/uncat2310/aliyun-cdt-traffic-guard.git
-cd aliyun-cdt-traffic-guard
-```
-
-`docker-compose.yml` 仓库里已经有了，不用自己建。只要把示例配置复制到**根目录**，和它放在一起：
-
-```bash
-cp backend/config.example.json config.json
-```
-
-此时目录是这样：
-
-```text
-aliyun-cdt-traffic-guard/          ← 在这里执行 docker compose
-├── docker-compose.yml             ← 仓库自带，负责拉镜像、挂配置、映射 8388
-├── config.json                    ← 你刚复制的，填自己的密钥和实例
-├── backend/
-│   └── config.example.json        ← 模板，不要改这个当正式配置
-├── frontend/
-└── ...
-```
-
-编辑根目录的 `config.json`：
+不管下不下载源码，都必须有一份自己的 `config.json`。容器靠它知道监控哪几台机器。
 
 ```json
 {
@@ -107,45 +90,80 @@ aliyun-cdt-traffic-guard/          ← 在这里执行 docker compose
 | 必填 | 填什么 |
 | --- | --- |
 | `instance_id` | ECS 实例 ID |
-| `region_id` | 实例地域 |
-| `ak` / `sk` | RAM AccessKey |
+| `region_id` | 实例地域，香港是 `cn-hongkong` |
+| `ak` / `sk` | 上一步的 AccessKey |
 | `threshold_gb` | 月度安全额度（GB），常用 `180` |
 | `name` | 面板上显示的名称 |
 
-多台机器：在 `servers` 里再加一段，换 key（如 `hk-02`）和对应实例 ID。每台可以用不同账号的 Key。只有一台时只留一个节点。
+多台：在 `servers` 里再加一段，换 key（如 `hk-02`）和对应实例 ID。每台可以用不同账号的 Key。只有一台时只留一个节点。
 
 `config.json` 含密钥，不要提交到 Git。
 
-### 3. 用 Docker Compose 启动（推荐）
+---
 
-还是在项目根目录（能同时看到 `docker-compose.yml` 和 `config.json`）：
+### 3. 选一种方式启动
+
+#### 方式 A：已经把代码放到本地（推荐）
+
+仓库里自带 `docker-compose.yml`，不用手写。进入项目根目录，把配置复制到**和 yml 同一层**：
 
 ```bash
+cd aliyun-cdt-traffic-guard
+cp backend/config.example.json config.json
+# 按上一节改 config.json
 docker compose up -d
 ```
 
-Compose 会读取同目录的 `docker-compose.yml`：拉取 `ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest`，把你的 `config.json` 挂进容器，并把 `8388` 端口露出来。第一次没有镜像会自动拉；要在本地构建就加 `--build`。
+目录应是：
 
-第一次如果本机还没有镜像，Compose 会从 GHCR 拉取 `latest`。也可以改成 `docker compose up -d --build` 在本地构建。
-
-打开 `http://服务器IP:8388`。
-
-常用命令：
-
-```bash
-docker compose logs -f          # 看日志
-docker compose pull && docker compose up -d   # 更新到最新镜像
-docker compose down             # 停止
+```text
+aliyun-cdt-traffic-guard/          ← 在这一层执行 docker compose
+├── docker-compose.yml             ← 仓库自带
+├── config.json                    ← 你复制并改过的
+├── history/                       ← 第一次启动后自动出现，存流量历史
+├── backend/
+│   └── config.example.json        ← 模板，不要拿它当正式配置
+├── frontend/
+└── Dockerfile
 ```
 
-`restart: unless-stopped` 会在主机重启后自动拉起容器。`./history` 用来保存 72H / 14D 用的流量日志。
+`docker-compose.yml` 会做这些事：
 
-### 4. 只用 Docker 命令
+- 拉取 `ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest`
+- 把当前目录的 `config.json` 挂进容器
+- 映射本机 `8388` 端口
+- `restart: unless-stopped`，主机重启后自动再起
 
-不 clone 仓库时，先自己准备 `config.json`，然后：
+打开 `http://这台机器的IP:8388`。
 
 ```bash
-mkdir -p history
+docker compose logs -f                         # 看日志
+docker compose pull && docker compose up -d    # 更新镜像
+docker compose down                            # 停止
+```
+
+本地构建而不是拉镜像：`docker compose up -d --build`。
+
+#### 方式 B：自己建一个空文件夹，只跑 Docker
+
+不下载源码也可以。自己建目录，只放配置：
+
+```bash
+mkdir -p ~/traffic-guard/history
+cd ~/traffic-guard
+```
+
+把上一节的 JSON 存成这个目录里的 `config.json`。目录是：
+
+```text
+traffic-guard/                 ← 你自己建的
+├── config.json                ← 必填，自己新建
+└── history/                   ← 建议先建好，用来存图表历史
+```
+
+然后：
+
+```bash
 docker pull ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
 docker run -d \
   --name aliyun-traffic-guard \
@@ -156,13 +174,15 @@ docker run -d \
   ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
 ```
 
-若提示无法拉取镜像，先登录：
+同样打开 `http://这台机器的IP:8388`。`--restart unless-stopped` 和 Compose 里的作用一样：主机重启后，容器会跟着 Docker 再起来。
+
+拉镜像失败时：
 
 ```bash
 echo YOUR_GITHUB_TOKEN | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
-公开仓库的 GHCR 包如果还是私有，到仓库 **Packages** 里把 `aliyun-cdt-traffic-guard` 设为 Public。
+若 GHCR 包还是私有，到仓库 **Packages** 里把 `aliyun-cdt-traffic-guard` 设为 Public。
 
 ---
 
