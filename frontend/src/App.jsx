@@ -9,7 +9,6 @@ import {
   TrendingUp,
   Clock,
   HardDrive,
-  Cpu,
   Wifi,
   ChevronDown
 } from 'lucide-react';
@@ -84,10 +83,11 @@ const getDailyVal = (point, seriesId) => {
 };
 
 const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
-  const radius = 38;
-  const stroke = 7;
-  const normalizedRadius = radius - stroke / 2;
-  const circumference = normalizedRadius * 2 * Math.PI;
+  const size = 72;
+  const stroke = 6;
+  const radius = (size - stroke) / 2;
+  const cx = size / 2;
+  const circumference = radius * 2 * Math.PI;
   const strokeDashoffset = circumference - (Math.min(percentage, 100) / 100) * circumference;
 
   let strokeColor = '#10b981';
@@ -96,14 +96,14 @@ const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
 
   return (
     <div className="gauge-circle-container">
-      <svg height={radius * 2} width={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
+      <svg viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
         <circle
           className="gauge-bg"
           strokeWidth={stroke}
-          fill="transparent"
-          r={normalizedRadius}
-          cx={radius}
-          cy={radius}
+          fill="none"
+          r={radius}
+          cx={cx}
+          cy={cx}
         />
         <circle
           className="gauge-progress"
@@ -112,10 +112,10 @@ const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
           strokeDasharray={`${circumference} ${circumference}`}
           style={{ strokeDashoffset }}
           strokeLinecap="round"
-          fill="transparent"
-          r={normalizedRadius}
-          cx={radius}
-          cy={radius}
+          fill="none"
+          r={radius}
+          cx={cx}
+          cy={cx}
         />
       </svg>
       <div className="gauge-text-center">
@@ -375,8 +375,9 @@ const ServerCard = ({ data }) => {
   const isRunning = data.status === 'Running';
   const threshold = traffic.threshold_gb ?? 180;
   const bandwidth = traffic.bandwidth_mbps ?? 2000;
-  const regionId = data.region_id || 'cn-hongkong';
   const regionName = data.region_name || '阿里云';
+  const cpu = ecsInfo.cpu || 2;
+  const memory = ecsInfo.memory || 0.5;
 
   return (
     <div className="server-card">
@@ -386,7 +387,7 @@ const ServerCard = ({ data }) => {
             <span className="node-name">{data.name || data.id || '节点'}</span>
             <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
           </div>
-          <div className="server-sub-tag">{regionName} ECS · {bandwidth}M BGP</div>
+          <div className="server-sub-tag">{regionName} ECS · {cpu}C / {memory}G · {bandwidth}M BGP</div>
         </div>
 
         <div className="server-status-pills">
@@ -454,20 +455,6 @@ const ServerCard = ({ data }) => {
         <div className="mini-stat-box">
           <span className="title">峰值共享带宽</span>
           <span className="num">{bandwidth} Mbps</span>
-        </div>
-      </div>
-
-      <div className="card-footer">
-        <div className="spec-item">
-          <Cpu size={12} />
-          <span>{ecsInfo.cpu || 2} vCPU / {ecsInfo.memory || 0.5} GB</span>
-        </div>
-        <div className="spec-item">
-          <ShieldCheck size={12} color="#10b981" />
-          <span>阈值 {threshold}GB 自动关机防护</span>
-        </div>
-        <div className="spec-item" style={{ fontFamily: 'var(--font-mono)' }}>
-          {regionId}
         </div>
       </div>
     </div>

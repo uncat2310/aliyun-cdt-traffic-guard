@@ -37,6 +37,7 @@
   --badge-offline-bg: rgba(244, 63, 94, 0.14);
   --badge-offline-text: #fb7185;
   --badge-offline-dot: #f43f5e;
+  --gauge-track: rgba(255, 255, 255, 0.12);
 
   --card-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4), 0 0 1px 1px var(--border-subtle);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 0 1px 1px var(--border-strong);
@@ -69,6 +70,7 @@ body.light-theme {
   --badge-online-bg: rgba(16, 185, 129, 0.15);
   --badge-online-text: #059669;
   --badge-online-dot: #10b981;
+  --gauge-track: rgba(15, 23, 42, 0.1);
 
   --card-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.06), 0 0 1px 1px var(--border-subtle);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.12), 0 0 1px 1px var(--border-strong);
@@ -481,15 +483,20 @@ body {
 .servers-grid.is-compact .gauge-section {
   padding: 10px 12px;
   gap: 12px;
+  overflow: hidden;
 }
 
 .servers-grid.is-compact .gauge-circle-container {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
 }
 
 .servers-grid.is-compact .gauge-val-pct {
-  font-size: 0.92rem;
+  font-size: 0.82rem;
+}
+
+.servers-grid.is-compact .gauge-sublabel {
+  font-size: 0.56rem;
 }
 
 .servers-grid.is-compact .card-mini-grid {
@@ -543,6 +550,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
   transition: all 0.2s ease;
 }
 
@@ -652,21 +660,28 @@ body {
   background: var(--bg-inset);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .gauge-circle-container {
   position: relative;
-  width: 76px;
-  height: 76px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .gauge-circle-container svg {
+  width: 100%;
+  height: 100%;
+  display: block;
   transform: rotate(-90deg);
+  transform-origin: center;
 }
 
 .gauge-bg {
-  stroke: rgba(255, 255, 255, 0.08);
+  stroke: var(--gauge-track);
 }
 
 .gauge-progress {
