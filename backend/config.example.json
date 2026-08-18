@@ -13,7 +13,7 @@
       "ak": "YOUR_ALIYUN_ACCESS_KEY_ID",
       "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
       "threshold_gb": 180.0,
-      "bandwidth_mbps": 2000,
+      "bandwidth_mbps": 0,
       "log_files": ["/opt/auto/auto1.log"]
     }
   }

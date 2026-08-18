@@ -189,6 +189,9 @@ def query_ecs_info(server_cfg):
             "instance_type": inst.get("InstanceType", "ecs.e-c4m1.large"),
             "cpu": inst.get("Cpu", 2),
             "memory": round(inst.get("Memory", 2048) / 1024, 1),
+            "internet_bw_out": _safe_int(inst.get("InternetMaxBandwidthOut")),
+            "eip_bandwidth": _safe_int((inst.get("EipAddress") or {}).get("Bandwidth")),
+            "public_ips": _collect_public_ips(inst, server_cfg),
             "os_name": "Linux",
             "creation_time": inst.get("CreationTime", ""),
             "expired_time": inst.get("ExpiredTime", "")
@@ -196,6 +199,86 @@ def query_ecs_info(server_cfg):
     except Exception as e:
         logger.error(f"ECS query error for {server_cfg.get('name', 'Unknown')}: {e}")
         return {"success": False, "status": "Unknown", "error": str(e)}
+
+
+def _safe_int(value):
+    try:
+        number = int(float(value))
+        return number if number > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_public_ips(inst, server_cfg):
+    ips = set()
+    raw_ip = str(server_cfg.get("ip") or "").strip()
+    if raw_ip and "*" not in raw_ip:
+        ips.add(raw_ip)
+    eip = (inst.get("EipAddress") or {}).get("IpAddress")
+    if eip:
+        ips.add(str(eip))
+    public_ip = inst.get("PublicIpAddress") or {}
+    for item in public_ip.get("IpAddress") or []:
+        if item:
+            ips.add(str(item))
+    return ips
+
+
+def query_shared_bandwidth(server_cfg, public_ips):
+    """CDT 机器公网带宽经常是 0，真实峰值在共享带宽包 (CBWP) 上。"""
+    try:
+        client = get_aliyun_client(server_cfg)
+        request = CommonRequest()
+        request.set_domain("vpc.aliyuncs.com")
+        request.set_version("2016-04-28")
+        request.set_action_name("DescribeCommonBandwidthPackages")
+        request.set_method("POST")
+        request.add_query_param("RegionId", server_cfg.get("region_id", "cn-hongkong"))
+        request.add_query_param("PageSize", 50)
+        response = client.do_action_with_exception(request)
+        data = json.loads(response.decode("utf-8"))
+        packages = (
+            data.get("CommonBandwidthPackages", {}).get("CommonBandwidthPackage", [])
+            or []
+        )
+        if not packages:
+            return None
+
+        matched = []
+        fallback = []
+        for pkg in packages:
+            bw = _safe_int(pkg.get("Bandwidth"))
+            if not bw:
+                continue
+            addrs = (
+                (pkg.get("PublicIpAddresses") or {}).get("PublicIpAddresse")
+                or (pkg.get("PublicIpAddresses") or {}).get("PublicIpAddress")
+                or []
+            )
+            pkg_ips = {str(item.get("IpAddress")) for item in addrs if item.get("IpAddress")}
+            if public_ips and pkg_ips.intersection(public_ips):
+                matched.append(bw)
+            else:
+                fallback.append(bw)
+
+        if matched:
+            return max(matched)
+        if len(fallback) == 1:
+            return fallback[0]
+        return None
+    except Exception as e:
+        logger.warning(f"CBWP query failed for {server_cfg.get('name', 'Unknown')}: {e}")
+        return None
+
+
+def resolve_bandwidth_mbps(server_cfg, ecs):
+    cfg_bw = _safe_int(server_cfg.get("bandwidth_mbps"))
+    if cfg_bw:
+        return cfg_bw
+    ecs_bw = _safe_int(ecs.get("internet_bw_out")) or _safe_int(ecs.get("eip_bandwidth"))
+    if ecs_bw:
+        return ecs_bw
+    return query_shared_bandwidth(server_cfg, ecs.get("public_ips") or set())
 
 
 # ================== 历史日志解析 ==================
@@ -297,7 +380,7 @@ def compute_overview_data():
                 "percentage": pct,
                 "isp": cdt.get("isp", "BGP"),
                 "product": cdt.get("product", "CBWP"),
-                "bandwidth_mbps": s_cfg.get("bandwidth_mbps", 2000),
+                "bandwidth_mbps": resolve_bandwidth_mbps(s_cfg, ecs),
                 "daily_avg_gb": daily_avg,
                 "days_left_est": days_left,
                 "projected_month_end_gb": projected_month_end,

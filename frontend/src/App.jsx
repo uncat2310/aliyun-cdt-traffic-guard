@@ -110,8 +110,7 @@ const CircularGauge = ({ used = 0, total = 180, percentage = 0 }) => {
         />
       </svg>
       <div className="gauge-text-center">
-        <div className="gauge-val-pct">{formatNum(percentage, 1)}%</div>
-        <div className="gauge-sublabel">已用</div>
+        <div className="gauge-val-pct">{formatNum(percentage, 0)}%</div>
       </div>
     </div>
   );
@@ -162,6 +161,7 @@ const SummaryRing = ({ percentage = 0, tone = 'used' }) => {
 const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const [activeTab, setActiveTab] = useState('hourly');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [hover, setHover] = useState(null);
   const series = resolveSeries(historyData, overview);
 
   useEffect(() => {
@@ -214,6 +214,32 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
 
   const barSlot = Math.max(1, series.length);
 
+  const updateHover = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * chartWidth;
+    if (x < padLeft || x > padLeft + graphW) {
+      setHover(null);
+      return;
+    }
+    if (activeTab === 'hourly' && hourly.length) {
+      const idx = Math.round(((x - padLeft) / graphW) * (hourly.length - 1));
+      const safeIdx = Math.min(hourly.length - 1, Math.max(0, idx));
+      const px = padLeft + (safeIdx / (hourly.length - 1 || 1)) * graphW;
+      setHover({ kind: 'hourly', idx: safeIdx, x: px });
+      return;
+    }
+    if (activeTab === 'daily' && daily.length) {
+      const idx = Math.min(daily.length - 1, Math.max(0, Math.floor(((x - padLeft) / graphW) * daily.length)));
+      const groupW = graphW / daily.length;
+      setHover({ kind: 'daily', idx, x: padLeft + idx * groupW + groupW / 2 });
+    }
+  };
+
+  const hoverPoint = hover?.kind === 'hourly' ? hourly[hover.idx] : hover?.kind === 'daily' ? daily[hover.idx] : null;
+  const hoverLabel = hoverPoint
+    ? (hover.kind === 'hourly' ? hoverPoint.time.slice(5, 16) : hoverPoint.date)
+    : '';
+
   return (
     <div className={`analytics-section ${series.length >= 4 ? 'is-dense' : ''}`}>
       <div className="section-header">
@@ -249,9 +275,12 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         ))}
       </div>
 
-      <div className="chart-container">
+      <div className="chart-container" onMouseLeave={() => setHover(null)}>
         {activeTab === 'hourly' ? (
-          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="chart-svg">
+          <svg
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            className="chart-svg"
+          >
             <defs>
               {series.map((item) => (
                 <linearGradient key={item.id} id={`grad-${item.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -330,9 +359,23 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
               }
               return null;
             })}
+
+            {hover?.kind === 'hourly' && hoverPoint && (
+              <g className="chart-hover-layer">
+                <line x1={hover.x} y1={padTop} x2={hover.x} y2={baselineY} className="chart-hover-line" />
+                {series.map((item) => {
+                  const val = getHourlyVal(hoverPoint, item.id);
+                  const y = padTop + graphH - (val / maxHourlyVal) * graphH;
+                  return <circle key={item.id} cx={hover.x} cy={y} r="4" fill={item.color} stroke="#fff" strokeWidth="1.5" />;
+                })}
+              </g>
+            )}
           </svg>
         ) : (
-          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="chart-svg">
+          <svg
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+            className="chart-svg"
+          >
             {[0, 0.33, 0.66, 1].map((ratio, i) => {
               const y = padTop + graphH - ratio * graphH;
               const val = ratio * maxDailyVal;
@@ -362,9 +405,10 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
               const xCenter = padLeft + idx * groupW + groupW / 2;
               const clusterWidth = barW * barSlot + (barSlot - 1) * 3;
               const clusterStart = xCenter - clusterWidth / 2;
+              const active = hover?.kind === 'daily' && hover.idx === idx;
 
               return (
-                <g key={idx}>
+                <g key={idx} opacity={hover?.kind === 'daily' && !active ? 0.45 : 1}>
                   {series.map((item, sIdx) => {
                     const value = getDailyVal(d, item.id);
                     const height = (value / maxDailyVal) * graphH;
@@ -395,6 +439,29 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
             })}
           </svg>
         )}
+
+        <div className="chart-hit" onMouseMove={updateHover} />
+
+        {hover && hoverPoint && (
+          <div
+            className={`chart-tooltip ${hover.x > chartWidth * 0.68 ? 'is-left' : ''}`}
+            style={{ left: `${(hover.x / chartWidth) * 100}%` }}
+          >
+            <div className="chart-tooltip-time">{hoverLabel}</div>
+            {series.map((item) => {
+              const value = hover.kind === 'hourly'
+                ? getHourlyVal(hoverPoint, item.id)
+                : getDailyVal(hoverPoint, item.id);
+              return (
+                <div className="chart-tooltip-row" key={item.id}>
+                  <span className="legend-dot" style={{ background: item.color }}></span>
+                  <span className="chart-tooltip-name">{item.name}</span>
+                  <span className="chart-tooltip-val">{formatNum(value, 2)} GB</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -406,7 +473,8 @@ const ServerCard = ({ data }) => {
   const traffic = data.traffic || {};
   const isRunning = data.status === 'Running';
   const threshold = traffic.threshold_gb ?? 180;
-  const bandwidth = traffic.bandwidth_mbps ?? 2000;
+  const bandwidth = Number(traffic.bandwidth_mbps);
+  const hasBandwidth = Number.isFinite(bandwidth) && bandwidth > 0;
 
   return (
     <div className="server-card">
@@ -423,10 +491,6 @@ const ServerCard = ({ data }) => {
             <span className="dot"></span>
             <span>{isRunning ? '运行中' : '已关机'}</span>
           </span>
-          <span className="status-pill status-pill-bgp">
-            <Wifi size={11} />
-            <span>BGP 专线</span>
-          </span>
         </div>
       </div>
 
@@ -439,16 +503,16 @@ const ServerCard = ({ data }) => {
 
         <div className="gauge-details">
           <div className="metric-row">
-            <span className="metric-label">当月已用流量</span>
+            <span className="metric-label">已用</span>
             <span className="metric-value metric-value-highlight">
               {formatNum(traffic.used_gb, 2)} <small>GB</small>
             </span>
           </div>
 
           <div className="metric-row">
-            <span className="metric-label">剩余安全额度</span>
+            <span className="metric-label">剩余</span>
             <span className="metric-value">
-              {formatNum(traffic.remaining_gb, 2)} <small>/ {threshold} GB</small>
+              {formatNum(traffic.remaining_gb, 2)} <small>GB</small>
             </span>
           </div>
 
@@ -467,23 +531,25 @@ const ServerCard = ({ data }) => {
         </div>
       </div>
 
-      <div className="card-mini-grid">
+      <div className={`card-mini-grid ${hasBandwidth ? '' : 'is-two'}`}>
         <div className="mini-stat-box">
-          <span className="title">日均消耗速率</span>
-          <span className="num">~{formatNum(traffic.daily_avg_gb, 2)} GB/天</span>
+          <span className="title">日均</span>
+          <span className="num">{formatNum(traffic.daily_avg_gb, 2)} <small>GB</small></span>
         </div>
 
         <div className="mini-stat-box">
-          <span className="title">预计可用天数</span>
+          <span className="title">可用</span>
           <span className="num" style={{ color: traffic.days_left_est < 10 ? '#f43f5e' : 'inherit' }}>
-            {traffic.days_left_est > 90 ? '> 90 天' : `~${traffic.days_left_est ?? 0} 天`}
+            {traffic.days_left_est > 90 ? '> 90' : formatNum(traffic.days_left_est ?? 0, 0)} <small>天</small>
           </span>
         </div>
 
-        <div className="mini-stat-box">
-          <span className="title">峰值共享带宽</span>
-          <span className="num">{bandwidth} Mbps</span>
-        </div>
+        {hasBandwidth && (
+          <div className="mini-stat-box">
+            <span className="title">带宽</span>
+            <span className="num">{bandwidth} <small>Mbps</small></span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -617,12 +683,7 @@ export default function App() {
               </svg>
             </div>
             <div className="brand-titles">
-              <h1>
-                流量守卫
-                <span className="badge badge-online">
-                  <span className="badge-dot"></span> 守卫生效中
-                </span>
-              </h1>
+              <h1 className="brand-wordmark">流量守卫</h1>
             </div>
           </div>
 

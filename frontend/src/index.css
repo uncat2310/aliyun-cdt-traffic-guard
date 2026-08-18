@@ -176,9 +176,9 @@ body {
 }
 
 .brand-icon-box {
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
   background: linear-gradient(135deg, #0ea5e9, #6366f1);
   display: flex;
   align-items: center;
@@ -188,14 +188,27 @@ body {
   flex-shrink: 0;
 }
 
-.brand-titles h1 {
-  font-size: 1.22rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.brand-titles h1,
+.brand-wordmark {
+  font-size: 1.78rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1;
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+}
+
+.brand-wordmark {
+  background: linear-gradient(120deg, #0f172a 8%, #0369a1 52%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body.dark-theme .brand-wordmark {
+  background: linear-gradient(120deg, #f8fafc 8%, #38bdf8 55%, #818cf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .brand-titles p {
@@ -741,11 +754,12 @@ body {
 }
 
 .gauge-val-pct {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.12rem;
+  font-weight: 800;
   font-family: var(--font-mono);
   color: var(--text-primary);
-  line-height: 1.1;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
 .gauge-sublabel {
@@ -770,17 +784,30 @@ body {
 
 .metric-label {
   color: var(--text-secondary);
+  font-size: 0.78rem;
 }
 
 .metric-value {
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1.08rem;
   color: var(--text-primary);
+  letter-spacing: -0.03em;
 }
 
 .metric-value-highlight {
-  font-size: 1.05rem;
+  font-size: 1.22rem;
+  color: #0284c7;
+}
+
+body.dark-theme .metric-value-highlight {
   color: #38bdf8;
+}
+
+.metric-value small {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 /* 进度条 */
@@ -806,6 +833,10 @@ body {
   gap: 8px;
 }
 
+.card-mini-grid.is-two {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .mini-stat-box {
   background: var(--bg-glass);
   border: 1px solid var(--border-subtle);
@@ -825,10 +856,18 @@ body {
 }
 
 .mini-stat-box .num {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 1.02rem;
+  font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-primary);
+  letter-spacing: -0.03em;
+}
+
+.mini-stat-box .num small {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 2px;
 }
 
 /* 底部规格参数 */
@@ -934,6 +973,64 @@ body {
   width: 100%;
   height: 190px;
   position: relative;
+}
+
+.chart-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+}
+
+.chart-hover-line {
+  stroke: var(--text-muted);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 10px;
+  transform: translateX(10px);
+  min-width: 168px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-popover);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--popover-shadow);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.chart-tooltip.is-left {
+  transform: translateX(calc(-100% - 10px));
+}
+
+.chart-tooltip-time {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.chart-tooltip-name {
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+.chart-tooltip-val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .analytics-section.is-dense .chart-container {
