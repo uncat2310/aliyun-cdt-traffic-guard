@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE = window.location.origin;
+const GITHUB_REPO_URL = 'https://github.com/uncat2310/aliyun-cdt-traffic-guard';
 
 const SERIES_COLORS = [
   '#0ea5e9',
@@ -140,7 +141,7 @@ const DonutGauge = ({ percentage = 0, size = 72, stroke = 7 }) => {
   );
 };
 
-const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node' }) => {
+const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node', last24h = null }) => {
   const width = 280;
   const height = 48;
   const padX = 2;
@@ -165,7 +166,10 @@ const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node' }) => {
 
   return (
     <div className="sparkline">
-      <div className="sparkline-caption">每 3 小时消耗</div>
+      <div className="sparkline-caption">近 72H · 每 3 小时消耗</div>
+      {last24h != null && (
+        <div className="sparkline-aux">最近 24H {formatNum(last24h, 1)} GB</div>
+      )}
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="sparkline-svg" aria-hidden="true">
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
@@ -574,7 +578,12 @@ const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
       </div>
 
       <div className="card-spark">
-        <Sparkline values={sparkline} color={gaugeColor(usedPct)} uid={data.id || data.name || 'node'} />
+        <Sparkline
+          values={sparkline}
+          color={gaugeColor(usedPct)}
+          uid={data.id || data.name || 'node'}
+          last24h={isHero && sparkline.length ? sparkline.slice(-8).reduce((sum, value) => sum + value, 0) : null}
+        />
       </div>
     </article>
   );
@@ -592,6 +601,7 @@ export default function App() {
   const [overview, setOverview] = useState(() => initialData?.overview || null);
   const [history, setHistory] = useState(() => initialData?.history || null);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncPulse, setSyncPulse] = useState(false);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(30);
   const [lastUpdated, setLastUpdated] = useState(() => {
     return initialData?.overview?.timestamp ? initialData.overview.timestamp.slice(11) : '';
@@ -654,6 +664,8 @@ export default function App() {
       setOverview(ovRes);
       setHistory(histRes);
       setLastUpdated(new Date().toLocaleTimeString());
+      setSyncPulse(true);
+      window.setTimeout(() => setSyncPulse(false), 420);
     } catch (err) {
       console.error('Failed to fetch monitoring data:', err);
     } finally {
@@ -705,7 +717,7 @@ export default function App() {
       <div className={`dashboard-container ${serverList.length >= 3 ? 'is-wide' : ''}`}>
         <header className="dashboard-header">
           <div className="header-brand">
-            <div className="brand-icon-box">
+            <div className={`brand-icon-box ${syncPulse ? 'is-syncing' : ''}`}>
               <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
                 <path d="M 14 33 L 24 33 L 29 19 L 36 45 L 41 29 L 50 33" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -856,7 +868,18 @@ export default function App() {
         <ResponsiveTrafficCharts historyData={history} overview={overview} />
 
         <footer className="dashboard-footer">
-          <span>流量守卫 · 阿里云 CDT 流量安全防护系统 · 自动化停机保安全</span>
+          <span>© 2026 流量守卫</span>
+          <a
+            className="footer-github"
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.73.5.7 5.53.7 11.8c0 5 3.24 9.24 7.74 10.73.57.1.77-.25.77-.55 0-.27-.01-1.16-.02-2.1-3.15.68-3.82-1.34-3.82-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.68.08-.68 1.13.08 1.73 1.16 1.73 1.16 1 .1.77 1.91 2.72 1.36.08-.8.39-1.36.71-1.67-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.45.11-3.02 0 0 .95-.3 3.12 1.16a10.8 10.8 0 0 1 5.68 0c2.17-1.46 3.12-1.16 3.12-1.16.61 1.57.23 2.73.11 3.02.72.79 1.16 1.8 1.16 3.04 0 4.35-2.65 5.31-5.18 5.59.4.35.76 1.03.76 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.2.66.78.55A11.1 11.1 0 0 0 23.3 11.8C23.3 5.53 18.27.5 12 .5Z"/>
+            </svg>
+            GitHub
+          </a>
         </footer>
       </div>
     </div>

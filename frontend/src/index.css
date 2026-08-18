@@ -166,7 +166,7 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 14px;
-  padding-bottom: 6px;
+  padding: 0;
 }
 
 .header-brand {
@@ -176,39 +176,66 @@ body {
 }
 
 .brand-icon-box {
-  width: 46px;
-  height: 46px;
-  border-radius: 13px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: linear-gradient(135deg, #0ea5e9, #6366f1);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.3);
+  box-shadow: 0 3px 10px rgba(14, 165, 233, 0.22);
   flex-shrink: 0;
+  animation: brand-in 0.46s ease both;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.brand-icon-box:hover {
+  transform: scale(1.03);
+  box-shadow: 0 5px 14px rgba(14, 165, 233, 0.32);
+}
+
+.brand-icon-box.is-syncing svg {
+  animation: brand-sync 0.4s ease;
 }
 
 .brand-titles h1,
 .brand-wordmark {
-  font-size: 1.78rem;
-  font-weight: 800;
-  letter-spacing: -0.05em;
+  font-size: 1.56rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
   line-height: 1;
   color: var(--text-primary);
 }
 
 .brand-wordmark {
-  background: linear-gradient(120deg, #0f172a 8%, #0369a1 52%, #4f46e5 100%);
+  background: linear-gradient(120deg, #0f172a 12%, #0369a1 58%, #4f46e5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: title-in 0.42s ease 0.1s both;
+}
+
+body.dark-theme .brand-wordmark {
+  background: linear-gradient(120deg, #f8fafc 12%, #38bdf8 58%, #818cf8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-body.dark-theme .brand-wordmark {
-  background: linear-gradient(120deg, #f8fafc 8%, #38bdf8 55%, #818cf8 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+@keyframes brand-in {
+  from { opacity: 0; transform: scale(0.94) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes title-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes brand-sync {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.42; }
 }
 
 .brand-titles p {
@@ -344,15 +371,14 @@ body.dark-theme .brand-wordmark {
 .summary-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 16px 18px;
   box-shadow: var(--card-shadow);
-  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 84px;
-  transition: transform 0.18s ease;
+  min-height: 88px;
+  transition: transform 0.18s ease, border-color 0.18s ease;
 }
 
 .summary-card:hover {
@@ -389,7 +415,7 @@ body.dark-theme .brand-wordmark {
 }
 
 .summary-meta .value {
-  font-size: 1.32rem;
+  font-size: 1.28rem;
   font-weight: 700;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -399,6 +425,7 @@ body.dark-theme .brand-wordmark {
   gap: 4px;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-meta .value small {
@@ -463,6 +490,7 @@ body.dark-theme .brand-wordmark {
   font-weight: 700;
   letter-spacing: -0.04em;
   font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-card .donut-pct {
@@ -552,19 +580,20 @@ body.dark-theme .brand-wordmark {
 
 .server-card.is-hero {
   display: grid;
-  grid-template-columns: 132px minmax(0, 1.5fr) minmax(132px, 0.42fr);
+  grid-template-columns: 30% 35% 35%;
   grid-template-areas:
     "head head head"
     "gauge stats spark";
-  column-gap: 24px;
-  row-gap: 14px;
+  column-gap: 20px;
+  row-gap: 16px;
   align-items: center;
+  padding: 22px 28px 20px;
 }
 
 .server-card.is-hero .card-top-header { grid-area: head; }
 .server-card.is-hero .card-gauge { grid-area: gauge; justify-self: center; }
-.server-card.is-hero .card-stats { grid-area: stats; }
-.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; align-self: end; }
+.server-card.is-hero .card-stats { grid-area: stats; min-width: 0; }
+.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; padding-right: 6px; }
 
 .server-card.is-compact {
   display: flex;
@@ -654,6 +683,7 @@ body.dark-theme .brand-wordmark {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .used-value small,
@@ -683,6 +713,7 @@ body.dark-theme .brand-wordmark {
   font-weight: 600;
   letter-spacing: -0.03em;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-num.is-hot { color: #e11d48; }
@@ -700,8 +731,9 @@ body.dark-theme .brand-wordmark {
     "head head"
     "gauge stats"
     "spark spark";
-  gap: 12px 16px;
+  gap: 14px 14px;
   align-items: center;
+  padding: 20px 20px 16px;
 }
 
 .server-card.is-compact .card-top-header { grid-area: head; }
@@ -727,6 +759,12 @@ body.dark-theme .brand-wordmark {
 }
 
 .sparkline-caption {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.sparkline-aux {
   font-size: 0.68rem;
   color: var(--text-muted);
   margin-bottom: 4px;
@@ -792,7 +830,6 @@ body.dark-theme .brand-wordmark {
   border-radius: var(--radius-lg);
   padding: 18px 22px;
   box-shadow: var(--card-shadow);
-  backdrop-filter: blur(16px);
 }
 
 .section-header {
@@ -992,10 +1029,27 @@ body.dark-theme .brand-wordmark {
 
 /* 底部标语 */
 .dashboard-footer {
-  text-align: center;
-  font-size: 0.72rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px 2px;
+  font-size: 12.5px;
   color: var(--text-muted);
-  padding-top: 4px;
+}
+
+.footer-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.footer-github:hover {
+  color: var(--text-secondary);
+  transform: translateY(-1px);
 }
 
 .spin {
@@ -1135,5 +1189,10 @@ body.dark-theme .brand-wordmark {
 
   .chart-axis-text {
     font-size: 10px;
+  }
+
+  .dashboard-footer {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
