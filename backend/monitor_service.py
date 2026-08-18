@@ -19,11 +19,15 @@ import urllib.parse
 
 from aliyunsdkcore.client import AcsClient
 from aliyunsdkcore.request import CommonRequest
-from aliyunsdkecs.request.v20140526 import DescribeInstancesRequest
+from aliyunsdkecs.request.v20140526 import (
+    DescribeInstancesRequest,
+    StartInstancesRequest,
+    StopInstancesRequest,
+)
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(CURRENT_DIR, "dashboard_dist")
-CONFIG_PATH = os.path.join(CURRENT_DIR, "config.json")
+CONFIG_PATH = os.environ.get("CONFIG_PATH") or os.path.join(CURRENT_DIR, "config.json")
 EXAMPLE_CONFIG_PATH = os.path.join(CURRENT_DIR, "config.example.json")
 
 # ================== 配置加载 ==================
@@ -103,8 +107,13 @@ def node_count_label(count):
 CONFIG = load_config()
 HOST = CONFIG.get("host", "0.0.0.0")
 PORT = CONFIG.get("port", 8388)
+GUARD_ENABLED = bool(CONFIG.get("guard_enabled", True))
+GUARD_AUTO_START = bool(CONFIG.get("guard_auto_start", True))
+GUARD_INTERVAL = max(15, int(CONFIG.get("guard_interval_seconds", 60)))
+HISTORY_DIR = CONFIG.get("history_dir") or os.path.join(CURRENT_DIR, "history")
 _RAW_SERVERS = CONFIG.get("servers") or {}
 SERVERS = {key: cfg for key, cfg in _RAW_SERVERS.items() if is_configured_server(cfg)}
+_last_guard_ts = 0.0
 
 _cache = {
     "overview_timestamp": 0,
@@ -337,6 +346,83 @@ def parse_server_history(log_files):
     }
 
 
+def history_log_path(s_key, s_cfg):
+    files = [path for path in (s_cfg.get("log_files") or []) if path]
+    if files:
+        return files[0]
+    os.makedirs(HISTORY_DIR, exist_ok=True)
+    return os.path.join(HISTORY_DIR, f"{s_key}.log")
+
+
+def append_traffic_log(s_key, s_cfg, used_gb):
+    path = history_log_path(s_key, s_cfg)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:23]
+    line = f"{stamp} - INFO - 当月CDT流量使用: {float(used_gb):.2f} GB\n"
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(line)
+    files = s_cfg.get("log_files") or []
+    if path not in files:
+        s_cfg["log_files"] = [path] + files
+
+
+def set_instance_power(s_cfg, action):
+    client = get_aliyun_client(s_cfg)
+    instance_id = s_cfg["instance_id"]
+    if action == "start":
+        request = StartInstancesRequest.StartInstancesRequest()
+    else:
+        request = StopInstancesRequest.StopInstancesRequest()
+        request.set_ForceStop(False)
+    request.set_InstanceIds([instance_id])
+    request.set_accept_format("json")
+    response = client.do_action_with_exception(request)
+    logger.info(
+        "Guard %s %s (%s): %s",
+        action,
+        s_cfg.get("name", s_cfg.get("id")),
+        instance_id,
+        response.decode("utf-8") if isinstance(response, (bytes, bytearray)) else response,
+    )
+
+
+def enforce_guards(overview):
+    servers = (overview or {}).get("servers") or {}
+    for s_key, s_cfg in SERVERS.items():
+        node = servers.get(s_key) or {}
+        traffic = node.get("traffic") or {}
+        name = s_cfg.get("name", s_key)
+        if not traffic.get("query_ok"):
+            logger.warning("Skip guard/history for %s: CDT query failed", name)
+            continue
+        used = float(traffic.get("used_gb") or 0)
+        try:
+            append_traffic_log(s_key, s_cfg, used)
+        except Exception as exc:
+            logger.error("Failed to append history log for %s: %s", name, exc)
+
+        if not GUARD_ENABLED or s_cfg.get("guard_enabled") is False:
+            continue
+        threshold = float(s_cfg.get("threshold_gb", 180.0))
+        status = node.get("status")
+        try:
+            if used >= threshold:
+                if status == "Stopped":
+                    logger.info("Guard %s already stopped (%.2f / %.0f GB)", name, used, threshold)
+                    continue
+                logger.warning("Guard stop %s: %.2f GB >= %.0f GB", name, used, threshold)
+                set_instance_power(s_cfg, "stop")
+            elif GUARD_AUTO_START and s_cfg.get("guard_auto_start", True):
+                if status == "Running":
+                    continue
+                logger.info("Guard start %s: %.2f GB < %.0f GB", name, used, threshold)
+                set_instance_power(s_cfg, "start")
+        except Exception as exc:
+            logger.error("Guard action failed for %s: %s", name, exc)
+
+
 # ================== 数据汇总生成 ==================
 def compute_overview_data():
     servers_data = {}
@@ -385,7 +471,8 @@ def compute_overview_data():
                 "days_left_est": days_left,
                 "projected_month_end_gb": projected_month_end,
                 "near_limit": pct >= 85.0,
-                "exceeded": pct >= 100.0
+                "exceeded": pct >= 100.0,
+                "query_ok": bool(cdt.get("success")),
             },
             "network": {
                 "online": True,
@@ -431,7 +518,8 @@ def build_server_series_meta():
 def compute_history_data():
     parsed = {}
     for s_key, s_cfg in SERVERS.items():
-        parsed[s_key] = parse_server_history(s_cfg.get("log_files", []))
+        logs = s_cfg.get("log_files") or [history_log_path(s_key, s_cfg)]
+        parsed[s_key] = parse_server_history(logs)
 
     hourly_dict = {}
     for s_key, hist in parsed.items():
@@ -507,10 +595,20 @@ def get_cached_history(force=False):
 
 
 def background_poller():
-    logger.info("Background traffic poller thread started.")
+    global _last_guard_ts
+    logger.info(
+        "Background traffic poller started (guard=%s, interval=%ss, auto_start=%s).",
+        GUARD_ENABLED,
+        GUARD_INTERVAL,
+        GUARD_AUTO_START,
+    )
     while True:
         try:
-            get_cached_overview(force=True)
+            overview = get_cached_overview(force=True)
+            now = time.time()
+            if now - _last_guard_ts >= GUARD_INTERVAL:
+                enforce_guards(overview)
+                _last_guard_ts = now
             get_cached_history(force=True)
         except Exception as e:
             logger.error(f"Error in background poller: {e}")

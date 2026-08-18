@@ -2,7 +2,7 @@
 
 # 流量守卫
 
-阿里云 CDT 出网流量监控面板，支持 1 台到多台 ECS，带 72 小时累积趋势、14 天每日消耗，以及独立的超额停机脚本。
+阿里云 CDT 出网流量监控面板：一份配置同时提供前端看板和超额自动关机。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
@@ -19,8 +19,12 @@
 
 给使用阿里云 **云数据传输（CDT）** 共享出网额度的机器准备的监控面板。
 
-面板只负责看：当月已用、剩余额度、日均消耗、预计可用天数，以及 72H / 14D 走势。  
-真正的超额停机由 `scripts/auto_traffic_guard.py` 按节点单独跑，不和面板绑死。
+从本仓库部署后，同一份 `config.json`、同一个进程会同时做两件事：
+
+- 网页上看当月已用、剩余额度、日均消耗、预计可用天数，以及 72H / 14D 走势
+- 每分钟按阈值自动关机；未超额时也可自动开机（和教程里的 crontab 脚本同一套逻辑）
+
+不需要再单独挂 `auto1.py` / crontab。服务自己写历史日志，图表不会因为 crontab 丢了而停更。
 
 假数据 Demo：<https://honkai3rd.eu.org>（备用 <https://demo.as4837.de>）
 
@@ -40,6 +44,8 @@ Demo 里的数字是虚构的，用来看布局和图表，不会连你的阿里
 - **14D 每日消耗**：分组柱状图，整数 nice ticks，按天对比各节点。
 - **浅色 / 深色 / 跟随系统**
 - **IP 脱敏**：面板只展示掩码 IP。
+- **超额自动关机**：用量达到 `threshold_gb` 就停对应 ECS；降回去后可自动开机。
+- **历史日志内置**：服务自己按教程同款格式写日志，72H / 14D 不再依赖外部 crontab。
 - **占位节点自动忽略**：示例里没改完的 `YOUR_ALIYUN_*` / `i-xxxxxxxx` 不会当成真机器画出来。
 
 ---
@@ -132,6 +138,9 @@ python scripts/demo_server.py
   "host": "0.0.0.0",
   "port": 8388,
   "node_tag": "Guard-Master",
+  "guard_enabled": true,
+  "guard_auto_start": true,
+  "guard_interval_seconds": 60,
   "servers": {
     "server1": {
       "id": "server1",
@@ -144,7 +153,7 @@ python scripts/demo_server.py
       "sk": "YOUR_ALIYUN_ACCESS_KEY_SECRET",
       "threshold_gb": 180.0,
       "bandwidth_mbps": 0,
-      "log_files": ["/opt/auto/auto1.log"]
+      "log_files": []
     }
   }
 }
@@ -155,14 +164,18 @@ python scripts/demo_server.py
 | 字段 | 说明 |
 | --- | --- |
 | `host` / `port` | 面板监听地址 |
+| `guard_enabled` | 是否启用超额关机 / 自动开机，默认 `true` |
+| `guard_auto_start` | 未超额时是否自动开机，默认 `true` |
+| `guard_interval_seconds` | 守卫检查间隔，默认 60 秒 |
 | `servers.<id>.ak` / `sk` | 该节点阿里云 AccessKey |
 | `servers.<id>.instance_id` | ECS 实例 ID |
 | `servers.<id>.region_id` | 地域，例如 `cn-hongkong` |
 | `servers.<id>.threshold_gb` | 该节点月度安全额度（GB） |
-| `servers.<id>.bandwidth_mbps` | `0` 表示自动探测；面板本身不再展示带宽 |
-| `servers.<id>.log_files` | 守卫脚本日志，用来画 72H / 14D |
+| `servers.<id>.log_files` | 可选。留空则写到 `history/<id>.log` |
 
-独立停机脚本：`scripts/auto_traffic_guard.py`，每台机器跑一份即可。
+RAM 子账号至少需要：读 CDT、读 ECS、以及对应实例的开关机权限（教程里的 `AliyunCDTFullAccess` + `AliyunECSFullAccess` 即可）。
+
+不建议把守卫脚本放在抢占式机器自己里面跑：关机后 crontab 也会停，无法自动开机。把本服务跑在一台一直在线的机器（或 Docker）上，远程管那些抢占式实例。
 
 ---
 
@@ -188,7 +201,7 @@ aliyun-cdt-traffic-guard/
 
 ## 权限与安全
 
-建议单独建 RAM 子账号，只给读流量 / 读实例，以及（如果要用停机脚本）对应实例的 `StopInstance`。
+建议单独建 RAM 子账号，授予 CDT 读取、ECS 读取，以及对应实例的开关机权限。
 
 **不要把带真实 AccessKey 的 `config.json` 提交到 Git。**
 
