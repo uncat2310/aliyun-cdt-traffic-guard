@@ -18,10 +18,11 @@
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   
-  /* 图表深色模式高对比度变量 */
-  --chart-axis-color: #cbd5e1;
-  --chart-axis-line: rgba(255, 255, 255, 0.3);
-  --chart-grid-color: rgba(255, 255, 255, 0.08);
+  /* 图表坐标轴：辅助阅读，不抢数据 */
+  --chart-axis-color: #94a3b8;
+  --chart-axis-line: rgba(148, 163, 184, 0.28);
+  --chart-grid-color: rgba(148, 163, 184, 0.1);
+  --chart-crosshair: rgba(148, 163, 184, 0.45);
   
   --accent-cyan: #06b6d4;
   --accent-blue: #3b82f6;
@@ -41,6 +42,7 @@
 
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 0 1px 1px var(--border-strong);
+  --tooltip-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.48);
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -62,10 +64,10 @@ body.light-theme {
   --text-secondary: #475569;
   --text-muted: #64748b;
   
-  /* 图表浅色模式高对比度变量 (清晰加粗深灰) */
-  --chart-axis-color: #334155;
-  --chart-axis-line: rgba(51, 65, 85, 0.35);
-  --chart-grid-color: rgba(51, 65, 85, 0.08);
+  --chart-axis-color: #64748b;
+  --chart-axis-line: rgba(100, 116, 139, 0.26);
+  --chart-grid-color: rgba(100, 116, 139, 0.1);
+  --chart-crosshair: rgba(100, 116, 139, 0.42);
 
   --badge-online-bg: rgba(16, 185, 129, 0.15);
   --badge-online-text: #059669;
@@ -74,6 +76,7 @@ body.light-theme {
 
   --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   --popover-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.12), 0 0 1px 1px var(--border-strong);
+  --tooltip-shadow: 0 8px 18px -8px rgba(15, 23, 42, 0.16);
 }
 
 * {
@@ -153,6 +156,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .dashboard-container.is-wide {
@@ -570,6 +574,7 @@ body.dark-theme .brand-wordmark {
   box-shadow: var(--card-shadow);
   position: relative;
   overflow: hidden;
+  min-width: 0;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -580,20 +585,29 @@ body.dark-theme .brand-wordmark {
 
 .server-card.is-hero {
   display: grid;
-  grid-template-columns: 30% 35% 35%;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 8fr) minmax(0, 7fr);
   grid-template-areas:
     "head head head"
     "gauge stats spark";
-  column-gap: 20px;
+  column-gap: 24px;
   row-gap: 16px;
   align-items: center;
   padding: 22px 28px 20px;
+  overflow: visible;
 }
 
-.server-card.is-hero .card-top-header { grid-area: head; }
-.server-card.is-hero .card-gauge { grid-area: gauge; justify-self: center; }
+.server-card.is-hero .card-top-header {
+  grid-area: head;
+  min-width: 0;
+  overflow: visible;
+}
+.server-card.is-hero .card-gauge {
+  grid-area: gauge;
+  justify-self: center;
+  padding-left: 4px;
+}
 .server-card.is-hero .card-stats { grid-area: stats; min-width: 0; }
-.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; padding-right: 6px; }
+.server-card.is-hero .card-spark { grid-area: spark; min-width: 0; padding-right: 12px; }
 
 .server-card.is-compact {
   display: flex;
@@ -605,11 +619,14 @@ body.dark-theme .brand-wordmark {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: 16px;
+  min-width: 0;
 }
 
 .node-id {
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .node-name {
@@ -618,6 +635,9 @@ body.dark-theme .brand-wordmark {
   color: var(--text-primary);
   letter-spacing: -0.03em;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-ip {
@@ -625,14 +645,17 @@ body.dark-theme .brand-wordmark {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .node-flags {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .status-text,
@@ -684,6 +707,7 @@ body.dark-theme .brand-wordmark {
   align-items: baseline;
   gap: 6px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .used-value small,
@@ -698,6 +722,7 @@ body.dark-theme .brand-wordmark {
   margin-top: 6px;
   font-size: 0.78rem;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-grid {
@@ -714,6 +739,7 @@ body.dark-theme .brand-wordmark {
   letter-spacing: -0.03em;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .kpi-num.is-hot { color: #e11d48; }
@@ -768,6 +794,7 @@ body.dark-theme .brand-wordmark {
   font-size: 0.68rem;
   color: var(--text-muted);
   margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .sparkline-svg {
@@ -830,6 +857,7 @@ body.dark-theme .brand-wordmark {
   border-radius: var(--radius-lg);
   padding: 18px 22px;
   box-shadow: var(--card-shadow);
+  min-width: 0;
 }
 
 .section-header {
@@ -853,17 +881,22 @@ body.dark-theme .brand-wordmark {
 .chart-legend-subrow {
   display: flex;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 6px;
   margin-bottom: 12px;
   font-size: 0.78rem;
   color: var(--text-secondary);
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .legend-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .legend-dot {
@@ -908,6 +941,7 @@ body.dark-theme .brand-wordmark {
   width: 100%;
   height: 190px;
   position: relative;
+  min-width: 0;
 }
 
 .chart-hit {
@@ -918,9 +952,10 @@ body.dark-theme .brand-wordmark {
 }
 
 .chart-hover-line {
-  stroke: var(--text-muted);
-  stroke-width: 1.2;
-  stroke-dasharray: 3 3;
+  stroke: var(--chart-crosshair);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.95;
   pointer-events: none;
 }
 
@@ -928,12 +963,12 @@ body.dark-theme .brand-wordmark {
   position: absolute;
   top: 10px;
   transform: translateX(10px);
-  min-width: 168px;
-  padding: 8px 10px;
+  min-width: 176px;
+  padding: 10px 12px;
   border-radius: 10px;
   background: var(--bg-popover);
   border: 1px solid var(--border-strong);
-  box-shadow: var(--popover-shadow);
+  box-shadow: var(--tooltip-shadow);
   pointer-events: none;
   z-index: 4;
 }
@@ -946,12 +981,13 @@ body.dark-theme .brand-wordmark {
   font-size: 0.72rem;
   color: var(--text-secondary);
   margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .chart-tooltip-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.76rem;
   line-height: 1.55;
 }
@@ -964,8 +1000,11 @@ body.dark-theme .brand-wordmark {
 
 .chart-tooltip-val {
   font-family: var(--font-mono);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 4.8em;
 }
 
 .analytics-section.is-dense .chart-container {
@@ -981,26 +1020,42 @@ body.dark-theme .brand-wordmark {
 /* XY 轴与网格线样式 */
 .chart-axis-line {
   stroke: var(--chart-axis-line);
-  stroke-width: 1.5;
+  stroke-width: 1;
   stroke-linecap: round;
 }
 
 .chart-tick-line {
   stroke: var(--chart-axis-line);
-  stroke-width: 1.2;
+  stroke-width: 1;
 }
 
 .chart-grid-line {
   stroke: var(--chart-grid-color);
-  stroke-dasharray: 4 4;
+  stroke-dasharray: 3 4;
 }
 
 .chart-axis-text {
   fill: var(--chart-axis-color);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-y-unit {
+  font-size: 10px;
+  font-weight: 400;
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.chart-end-label {
   font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .chart-line-s1 {
@@ -1027,21 +1082,33 @@ body.dark-theme .brand-wordmark {
   fill: url(#grad-s2);
 }
 
-/* 底部标语 */
+/* 底部标语：整行居中 */
 .dashboard-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
   padding: 10px 2px 2px;
   font-size: 12.5px;
+  font-weight: 400;
   color: var(--text-muted);
+}
+
+.footer-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.footer-sep {
+  opacity: 0.7;
 }
 
 .footer-github {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: inherit;
   text-decoration: none;
   transition: color 0.15s ease, transform 0.15s ease;
@@ -1069,12 +1136,18 @@ body.dark-theme .brand-wordmark {
       "head"
       "gauge"
       "stats"
-      "spark"
-      "bar";
+      "spark";
+    padding: 20px 22px 18px;
+    column-gap: 16px;
   }
 
   .server-card.is-hero .card-gauge {
-    justify-self: start;
+    justify-self: center;
+    padding-left: 0;
+  }
+
+  .server-card.is-hero .card-spark {
+    padding-right: 0;
   }
 }
 
@@ -1161,10 +1234,15 @@ body.dark-theme .brand-wordmark {
       "head"
       "gauge"
       "stats"
-      "spark"
-      "bar";
+      "spark";
     padding: 16px;
     gap: 12px;
+    overflow: visible;
+  }
+
+  .node-flags {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .node-name {
@@ -1188,11 +1266,14 @@ body.dark-theme .brand-wordmark {
   }
 
   .chart-axis-text {
+    font-size: 11px;
+  }
+
+  .chart-end-label {
     font-size: 10px;
   }
 
   .dashboard-footer {
-    flex-wrap: wrap;
-    gap: 8px;
+    padding-top: 8px;
   }
 }

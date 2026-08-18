@@ -30,6 +30,152 @@ const formatNum = (num, digits = 2) => {
   return Number(num).toFixed(digits);
 };
 
+const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
+const niceStepFrom = (rough) => {
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(rough, 1e-6))));
+  const residual = rough / magnitude;
+  const nice = NICE_STEPS.find((step) => step >= residual) || 10;
+  return nice * magnitude;
+};
+
+const niceScale = (dataMax, tickCount = 4) => {
+  const padded = Math.max(Number(dataMax) || 0, 0.1) * 1.04;
+  let step = niceStepFrom(padded / tickCount);
+  let max = step * tickCount;
+  let guard = 0;
+  while (max < padded && guard < 8) {
+    step = niceStepFrom(step * 1.05);
+    max = step * tickCount;
+    guard += 1;
+  }
+  const ticks = [];
+  for (let i = 0; i <= tickCount; i += 1) {
+    ticks.push(Number((i * step).toPrecision(10)));
+  }
+  return { max, ticks, step };
+};
+
+const niceBarScale = (dataMax) => {
+  const raw = Math.max(Number(dataMax) || 0, 0.1);
+  const floor = raw * 1.06;
+
+  const consider = (step, intervals, list) => {
+    const max = Number((step * intervals).toPrecision(10));
+    if (intervals < 2 || intervals > 6) return;
+    if (max + 1e-9 < floor) return;
+    if (raw < 1.5 && max > raw * 1.8) return;
+    if (raw >= 1.5 && max > raw * 2.15) return;
+
+    const ticks = intervals + 1;
+    const headroom = (max - raw) / raw;
+    const integerStep = step >= 1 && Math.abs(step - Math.round(step)) < 1e-8;
+    const niceHalf = Math.abs(step - 0.5) < 1e-8;
+    const mag = Math.pow(10, Math.floor(Math.log10(Math.max(step, 1e-6))));
+    const base = step / mag;
+
+    let score = 0;
+    if (integerStep) score += 50;
+    else if (niceHalf) score += 12;
+    else score -= 45;
+
+    if (ticks === 4 || ticks === 5) score += 16;
+    else if (ticks === 6) score += 10;
+    else if (ticks === 3) score += 4;
+
+    if (headroom >= 0.08 && headroom <= 0.28) score += 14;
+    else if (headroom >= 0.04 && headroom < 0.08) score += 8;
+    else if (headroom > 0.28 && headroom <= 0.5) score += 3;
+
+    score -= Math.max(0, headroom - 0.32) * 28;
+    if ([1, 2, 5].some((n) => Math.abs(base - n) < 1e-8)) score += 8;
+    if ([1.5, 2.5, 3].some((n) => Math.abs(base - n) < 1e-8)) score -= 18;
+
+    list.push({ max, step, intervals, score });
+  };
+
+  const steps = [];
+  for (const base of [1, 2, 5, 4, 8, 10]) {
+    for (let exp = 0; exp <= 3; exp += 1) {
+      steps.push(base * (10 ** exp));
+    }
+  }
+  if (raw < 2.2) steps.push(0.5);
+  if (raw < 0.9) steps.push(0.2, 0.25);
+
+  const list = [];
+  for (const step of [...new Set(steps.map((value) => Number(value.toPrecision(10))))]) {
+    for (let n = 2; n <= 6; n += 1) consider(step, n, list);
+  }
+
+  list.sort((a, b) => b.score - a.score || a.max - b.max);
+  const best = list[0] || {
+    max: Math.max(1, Math.ceil(floor)),
+    step: 1,
+    intervals: Math.max(2, Math.ceil(floor))
+  };
+
+  const ticks = [];
+  for (let i = 0; i <= best.intervals; i += 1) {
+    ticks.push(Number((i * best.step).toPrecision(10)));
+  }
+  return { max: best.max, ticks, step: best.step };
+};
+
+const formatAxisTick = (value, step) => {
+  const wholeStep = Math.abs(step - Math.round(step)) < 1e-8 && step >= 1;
+  if (wholeStep) return String(Math.round(value));
+  const digits = step >= 0.1 ? 1 : 2;
+  return Number(value.toFixed(digits)).toString();
+};
+
+const layoutEndLabels = (entries, minY, maxY, minGap = 14) => {
+  const items = entries.map((item) => ({ ...item })).sort((a, b) => a.y - b.y);
+
+  for (let i = 1; i < items.length; i += 1) {
+    if (items[i].y - items[i - 1].y < minGap) {
+      items[i].y = items[i - 1].y + minGap;
+    }
+  }
+
+  if (items.length && items[items.length - 1].y > maxY) {
+    items[items.length - 1].y = maxY;
+    for (let i = items.length - 2; i >= 0; i -= 1) {
+      if (items[i + 1].y - items[i].y < minGap) {
+        items[i].y = items[i + 1].y - minGap;
+      }
+    }
+  }
+
+  if (items.length && items[0].y < minY) {
+    items[0].y = minY;
+    for (let i = 1; i < items.length; i += 1) {
+      if (items[i].y - items[i - 1].y < minGap) {
+        items[i].y = items[i - 1].y + minGap;
+      }
+    }
+  }
+
+  return items;
+};
+
+const roundedTopBar = (x, y, width, height, radius = 3.5) => {
+  const h = Math.max(2, height);
+  const r = Math.min(radius, width / 2, Math.max(0, h - 1));
+  if (h <= r + 1) {
+    return `M ${x} ${y + h} H ${x + width} V ${y} H ${x} Z`;
+  }
+  return [
+    `M ${x} ${y + h}`,
+    `L ${x} ${y + r}`,
+    `Q ${x} ${y} ${x + r} ${y}`,
+    `L ${x + width - r} ${y}`,
+    `Q ${x + width} ${y} ${x + width} ${y + r}`,
+    `L ${x + width} ${y + h}`,
+    'Z'
+  ].join(' ');
+};
+
 const serversGridClass = (count) => {
   if (count <= 1) return 'is-single';
   if (count === 2) return 'is-two';
@@ -186,12 +332,12 @@ const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node', last24h = nul
 
 const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const [activeTab, setActiveTab] = useState('hourly');
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [viewport, setViewport] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1200));
   const [hover, setHover] = useState(null);
   const series = resolveSeries(historyData, overview);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setViewport(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -200,26 +346,30 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
     return null;
   }
 
+  const isMobile = viewport < 768;
+  const isNarrow = viewport < 640;
   const hourly = historyData.hourly || [];
   const daily = historyData.daily || [];
 
   const rawMaxH = Math.max(
-    5,
+    0.1,
     ...hourly.flatMap((point) => series.map((item) => getHourlyVal(point, item.id)))
-  ) * 1.15;
-  const maxHourlyVal = Math.ceil(rawMaxH);
+  );
+  const hourlyScale = niceScale(rawMaxH, 4);
+  const maxHourlyVal = hourlyScale.max;
 
   const rawMaxD = Math.max(
-    0.5,
+    0.1,
     ...daily.flatMap((point) => series.map((item) => getDailyVal(point, item.id)))
-  ) * 1.25;
-  const maxDailyVal = Math.ceil(rawMaxD * 10) / 10;
+  );
+  const dailyScale = niceBarScale(rawMaxD);
+  const maxDailyVal = dailyScale.max;
 
   const chartWidth = isMobile ? 540 : 860;
   const chartHeight = isMobile ? 210 : (series.length >= 4 ? 220 : 190);
-  const padLeft = isMobile ? 48 : 58;
-  const padRight = isMobile ? 16 : 24;
-  const padTop = 16;
+  const padLeft = isMobile ? 40 : 48;
+  const padRight = activeTab === 'hourly' ? (isMobile ? 48 : 58) : (isMobile ? 16 : 22);
+  const padTop = 26;
   const padBottom = isMobile ? 36 : 32;
 
   const graphW = chartWidth - padLeft - padRight;
@@ -227,6 +377,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const baselineY = padTop + graphH;
   const lastIdx = hourly.length - 1;
   const lastX = padLeft + graphW;
+  const areaOpacity = series.length >= 3 ? 0.08 : series.length === 2 ? 0.11 : 0.14;
 
   const getLinePath = (seriesId) => {
     if (hourly.length === 0) return '';
@@ -237,6 +388,39 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
       return `${acc} ${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }, '');
   };
+
+  const shouldShowHourlyTick = (idx) => {
+    if (hourly.length <= 1) return true;
+    if (idx === 0 || idx === hourly.length - 1) return true;
+    const target = isNarrow ? 3 : isMobile ? 4 : 6;
+    const step = Math.max(1, Math.round((hourly.length - 1) / (target - 1)));
+    if (idx % step !== 0) return false;
+    return hourly.length - 1 - idx >= Math.max(1, Math.floor(step * 0.6));
+  };
+
+  const shouldShowDailyTick = (idx) => {
+    if (daily.length <= 1) return true;
+    if (idx === 0 || idx === daily.length - 1) return true;
+    const every = isNarrow ? 3 : viewport < 1024 ? 2 : 1;
+    if (idx % every !== 0) return false;
+    return daily.length - 1 - idx >= every;
+  };
+
+  const hourlyEndLabels = hourly.length
+    ? layoutEndLabels(
+      series.map((item) => {
+        const value = getHourlyVal(hourly[lastIdx], item.id);
+        return {
+          id: item.id,
+          color: item.color,
+          value,
+          y: padTop + graphH - (value / maxHourlyVal) * graphH
+        };
+      }),
+      padTop + 8,
+      baselineY - 6
+    )
+    : [];
 
   const barSlot = Math.max(1, series.length);
 
@@ -300,13 +484,13 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         <div className="tab-group">
           <button
             className={`tab-btn ${activeTab === 'hourly' ? 'active' : ''}`}
-            onClick={() => setActiveTab('hourly')}
+            onClick={() => { setActiveTab('hourly'); setHover(null); }}
           >
             72H 累积走势
           </button>
           <button
             className={`tab-btn ${activeTab === 'daily' ? 'active' : ''}`}
-            onClick={() => setActiveTab('daily')}
+            onClick={() => { setActiveTab('daily'); setHover(null); }}
           >
             14D 每日消耗
           </button>
@@ -335,18 +519,26 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
             <defs>
               {series.map((item) => (
                 <linearGradient key={item.id} id={`grad-${item.id}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={item.color} stopOpacity="0.4" />
+                  <stop offset="0%" stopColor={item.color} stopOpacity={areaOpacity} />
                   <stop offset="100%" stopColor={item.color} stopOpacity="0.0" />
                 </linearGradient>
               ))}
             </defs>
 
-            {[0, 0.33, 0.66, 1].map((ratio, i) => {
-              const y = padTop + graphH - ratio * graphH;
-              const val = ratio * maxHourlyVal;
+            <text
+              x={padLeft - 8}
+              y={padTop - 11}
+              textAnchor="end"
+              className="chart-y-unit"
+            >
+              GB
+            </text>
+
+            {hourlyScale.ticks.map((val, i) => {
+              const y = padTop + graphH - (val / maxHourlyVal) * graphH;
               return (
                 <g key={i}>
-                  <line x1={padLeft} y1={y} x2={chartWidth - padRight} y2={y} className="chart-grid-line" />
+                  <line x1={padLeft} y1={y} x2={padLeft + graphW} y2={y} className="chart-grid-line" />
                   <text
                     x={padLeft - 8}
                     y={y}
@@ -354,14 +546,14 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
                     dominantBaseline="central"
                     className="chart-axis-text chart-y-text"
                   >
-                    {val.toFixed(0)}G
+                    {formatAxisTick(val, hourlyScale.step)}
                   </text>
                 </g>
               );
             })}
 
             <line x1={padLeft} y1={padTop} x2={padLeft} y2={baselineY} className="chart-axis-line" />
-            <line x1={padLeft} y1={baselineY} x2={chartWidth - padRight} y2={baselineY} className="chart-axis-line" />
+            <line x1={padLeft} y1={baselineY} x2={padLeft + graphW} y2={baselineY} className="chart-axis-line" />
 
             {hourly.length > 1 && series.map((item) => {
               const path = getLinePath(item.id);
@@ -377,38 +569,49 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
                     d={path}
                     fill="none"
                     stroke={item.color}
-                    strokeWidth="2.4"
+                    strokeWidth="2.2"
                     strokeLinejoin="round"
                     strokeLinecap="round"
                   />
-                  <circle cx={lastX} cy={lastY} r="4.5" fill={item.color} stroke="#ffffff" strokeWidth="2" />
+                  <circle cx={lastX} cy={lastY} r="3.6" fill={item.color} stroke="var(--bg-card)" strokeWidth="1.6" />
                 </g>
               );
             })}
 
-            {hourly.map((pt, idx) => {
-              const step = Math.max(1, Math.ceil(hourly.length / (isMobile ? 3 : 5)));
-              if (idx % step === 0 || idx === hourly.length - 1) {
-                const x = padLeft + (idx / (hourly.length - 1 || 1)) * graphW;
-                const timeLabel = isMobile ? pt.time.slice(5, 13) + ':00' : pt.time.slice(5, 16);
-                const align = idx === 0 ? 'start' : (idx === hourly.length - 1 ? 'end' : 'middle');
+            {hourlyEndLabels.map((label) => (
+              <text
+                key={`end-${label.id}`}
+                x={lastX + 8}
+                y={label.y}
+                textAnchor="start"
+                dominantBaseline="central"
+                className="chart-end-label"
+                fill={label.color}
+              >
+                {formatNum(label.value, 1)}
+              </text>
+            ))}
 
-                return (
-                  <g key={idx}>
-                    <line x1={x} y1={baselineY} x2={x} y2={baselineY + 4} className="chart-tick-line" />
-                    <text
-                      x={x}
-                      y={baselineY + 16}
-                      textAnchor={align}
-                      dominantBaseline="central"
-                      className="chart-axis-text chart-x-text"
-                    >
-                      {timeLabel}
-                    </text>
-                  </g>
-                );
-              }
-              return null;
+            {hourly.map((pt, idx) => {
+              if (!shouldShowHourlyTick(idx)) return null;
+              const x = padLeft + (idx / (hourly.length - 1 || 1)) * graphW;
+              const timeLabel = pt.time.slice(5, 16);
+              const align = idx === 0 ? 'start' : (idx === hourly.length - 1 ? 'end' : 'middle');
+
+              return (
+                <g key={idx}>
+                  <line x1={x} y1={baselineY} x2={x} y2={baselineY + 4} className="chart-tick-line" />
+                  <text
+                    x={x}
+                    y={baselineY + 16}
+                    textAnchor={align}
+                    dominantBaseline="central"
+                    className="chart-axis-text chart-x-text"
+                  >
+                    {timeLabel}
+                  </text>
+                </g>
+              );
             })}
 
             {hover?.kind === 'hourly' && hoverPoint && (
@@ -428,12 +631,20 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
             preserveAspectRatio="none"
             className="chart-svg"
           >
-            {[0, 0.33, 0.66, 1].map((ratio, i) => {
-              const y = padTop + graphH - ratio * graphH;
-              const val = ratio * maxDailyVal;
+            <text
+              x={padLeft - 8}
+              y={padTop - 11}
+              textAnchor="end"
+              className="chart-y-unit"
+            >
+              GB
+            </text>
+
+            {dailyScale.ticks.map((val, i) => {
+              const y = padTop + graphH - (val / maxDailyVal) * graphH;
               return (
                 <g key={i}>
-                  <line x1={padLeft} y1={y} x2={chartWidth - padRight} y2={y} className="chart-grid-line" />
+                  <line x1={padLeft} y1={y} x2={padLeft + graphW} y2={y} className="chart-grid-line" />
                   <text
                     x={padLeft - 8}
                     y={y}
@@ -441,51 +652,55 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
                     dominantBaseline="central"
                     className="chart-axis-text chart-y-text"
                   >
-                    {val.toFixed(1)}G
+                    {formatAxisTick(val, dailyScale.step)}
                   </text>
                 </g>
               );
             })}
 
             <line x1={padLeft} y1={padTop} x2={padLeft} y2={baselineY} className="chart-axis-line" />
-            <line x1={padLeft} y1={baselineY} x2={chartWidth - padRight} y2={baselineY} className="chart-axis-line" />
+            <line x1={padLeft} y1={baselineY} x2={padLeft + graphW} y2={baselineY} className="chart-axis-line" />
 
             {daily.map((d, idx) => {
               const totalBars = daily.length;
               const groupW = graphW / totalBars;
-              const barW = Math.max(6, (groupW - (isMobile ? 8 : 12)) / barSlot);
+              const groupGap = isMobile ? 12 : 18;
+              const innerW = Math.max(8, groupW - groupGap);
+              const barGap = barSlot > 1 ? 3 : 0;
+              const barW = Math.max(4, ((innerW - barGap * (barSlot - 1)) / barSlot) * 0.78);
               const xCenter = padLeft + idx * groupW + groupW / 2;
-              const clusterWidth = barW * barSlot + (barSlot - 1) * 3;
+              const clusterWidth = barW * barSlot + barGap * (barSlot - 1);
               const clusterStart = xCenter - clusterWidth / 2;
               const active = hover?.kind === 'daily' && hover.idx === idx;
+              const dimmed = hover?.kind === 'daily' && !active;
 
               return (
-                <g key={idx} opacity={hover?.kind === 'daily' && !active ? 0.45 : 1}>
+                <g key={idx} opacity={dimmed ? 0.62 : 1}>
                   {series.map((item, sIdx) => {
                     const value = getDailyVal(d, item.id);
                     const height = (value / maxDailyVal) * graphH;
+                    const x = clusterStart + sIdx * (barW + barGap);
+                    const y = baselineY - Math.max(2, height);
                     return (
-                      <rect
+                      <path
                         key={item.id}
-                        x={clusterStart + sIdx * (barW + 3)}
-                        y={baselineY - height}
-                        width={barW}
-                        height={Math.max(2, height)}
+                        d={roundedTopBar(x, y, barW, Math.max(2, height), 3.5)}
                         fill={item.color}
-                        rx="2"
                       />
                     );
                   })}
                   <line x1={xCenter} y1={baselineY} x2={xCenter} y2={baselineY + 4} className="chart-tick-line" />
-                  <text
-                    x={xCenter}
-                    y={baselineY + 16}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    className="chart-axis-text chart-x-text"
-                  >
-                    {d.date.slice(5)}
-                  </text>
+                  {shouldShowDailyTick(idx) && (
+                    <text
+                      x={xCenter}
+                      y={baselineY + 16}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      className="chart-axis-text chart-x-text"
+                    >
+                      {d.date.slice(5)}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -868,18 +1083,21 @@ export default function App() {
         <ResponsiveTrafficCharts historyData={history} overview={overview} />
 
         <footer className="dashboard-footer">
-          <span>© 2026 流量守卫</span>
-          <a
-            className="footer-github"
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 .5C5.73.5.7 5.53.7 11.8c0 5 3.24 9.24 7.74 10.73.57.1.77-.25.77-.55 0-.27-.01-1.16-.02-2.1-3.15.68-3.82-1.34-3.82-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.68.08-.68 1.13.08 1.73 1.16 1.73 1.16 1 .1.77 1.91 2.72 1.36.08-.8.39-1.36.71-1.67-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.45.11-3.02 0 0 .95-.3 3.12 1.16a10.8 10.8 0 0 1 5.68 0c2.17-1.46 3.12-1.16 3.12-1.16.61 1.57.23 2.73.11 3.02.72.79 1.16 1.8 1.16 3.04 0 4.35-2.65 5.31-5.18 5.59.4.35.76 1.03.76 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.2.66.78.55A11.1 11.1 0 0 0 23.3 11.8C23.3 5.53 18.27.5 12 .5Z"/>
-            </svg>
-            GitHub
-          </a>
+          <div className="footer-inner">
+            <span>© 2026 流量守卫</span>
+            <span className="footer-sep" aria-hidden="true">·</span>
+            <a
+              className="footer-github"
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 .5C5.73.5.7 5.53.7 11.8c0 5 3.24 9.24 7.74 10.73.57.1.77-.25.77-.55 0-.27-.01-1.16-.02-2.1-3.15.68-3.82-1.34-3.82-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.68.08-.68 1.13.08 1.73 1.16 1.73 1.16 1 .1.77 1.91 2.72 1.36.08-.8.39-1.36.71-1.67-2.52-.29-5.17-1.26-5.17-5.6 0-1.24.44-2.25 1.16-3.04-.12-.29-.5-1.45.11-3.02 0 0 .95-.3 3.12 1.16a10.8 10.8 0 0 1 5.68 0c2.17-1.46 3.12-1.16 3.12-1.16.61 1.57.23 2.73.11 3.02.72.79 1.16 1.8 1.16 3.04 0 4.35-2.65 5.31-5.18 5.59.4.35.76 1.03.76 2.08 0 1.5-.01 2.71-.01 3.08 0 .3.2.66.78.55A11.1 11.1 0 0 0 23.3 11.8C23.3 5.53 18.27.5 12 .5Z"/>
+              </svg>
+              GitHub
+            </a>
+          </div>
         </footer>
       </div>
     </div>
