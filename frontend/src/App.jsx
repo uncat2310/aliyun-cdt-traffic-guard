@@ -371,13 +371,9 @@ const ServerCard = ({ data }) => {
   if (!data) return null;
 
   const traffic = data.traffic || {};
-  const ecsInfo = data.ecs_info || {};
   const isRunning = data.status === 'Running';
   const threshold = traffic.threshold_gb ?? 180;
   const bandwidth = traffic.bandwidth_mbps ?? 2000;
-  const regionName = data.region_name || '阿里云';
-  const cpu = ecsInfo.cpu || 2;
-  const memory = ecsInfo.memory || 0.5;
 
   return (
     <div className="server-card">
@@ -387,7 +383,6 @@ const ServerCard = ({ data }) => {
             <span className="node-name">{data.name || data.id || '节点'}</span>
             <span className="masked-ip-pill">{data.ip || '*.*.*.*'}</span>
           </div>
-          <div className="server-sub-tag">{regionName} ECS · {cpu}C / {memory}G · {bandwidth}M BGP</div>
         </div>
 
         <div className="server-status-pills">
