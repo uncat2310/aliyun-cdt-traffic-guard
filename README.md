@@ -10,7 +10,7 @@
 
 <br/>
 
-多节点 · 72H 趋势 · 14D 日消耗 · 自动停机保护 · Docker 部署
+多节点 · 72H / 14D 趋势 · 阈值保护 · Docker 部署
 
 <br/>
 
@@ -19,10 +19,10 @@
 
 <br/>
 
-[![GHCR](https://img.shields.io/github/actions/workflow/status/uncat2310/aliyun-cdt-traffic-guard/docker-publish.yml?branch=main&style=flat-square&label=GHCR)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/uncat2310/aliyun-cdt-traffic-guard/docker-publish.yml?branch=main&style=flat-square&label=Build)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/actions)
 [![License](https://img.shields.io/github/license/uncat2310/aliyun-cdt-traffic-guard?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/uncat2310/aliyun-cdt-traffic-guard?style=flat-square)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/stargazers)
-[![Image](https://img.shields.io/badge/ghcr.io-aliyun--cdt--traffic--guard-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/pkgs/container/aliyun-cdt-traffic-guard)
+[![Docker](https://img.shields.io/badge/Docker-GHCR-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/uncat2310/aliyun-cdt-traffic-guard/pkgs/container/aliyun-cdt-traffic-guard)
 
 <br/>
 
@@ -40,27 +40,11 @@
 
 ## 功能
 
-### 流量监控
-
-按节点显示当月已用、剩余额度、日均消耗和预计可用天数。顶部汇总全部节点。
-
-### 趋势分析
-
-72 小时累积走势（折线 / 面积）和 14 天每日消耗（分组柱状图）。Hover 可查看对应时间点的数值。
-
-### 多节点
-
-`config.json` 的 `servers` 里写几台就显示几台。每台可以有独立的地域、阈值和 AccessKey。
-
-### 自动保护
-
-后端每 60 秒查询一次 CDT。用量达到该节点的 `threshold_gb` 时停止对应 ECS；低于阈值且开启自动开机时，会重新启动实例。
-
-### Dashboard
-
-响应式布局，支持浅色、深色和跟随系统。页面默认每 30 秒刷新一次展示数据，可在界面里改成 10s / 60s 或暂停。
-
----
+- **流量监控**：按节点展示当月已用、剩余额度、日均消耗和预计可用天数。
+- **趋势分析**：72H 累积趋势与 14D 每日消耗，支持 Hover 查看明细。
+- **多节点**：每台节点可配置独立地域、阈值和 AccessKey。
+- **自动保护**：达到安全阈值自动停止 ECS，并支持条件满足后自动启动。
+- **Dashboard**：响应式设计，支持浅色、深色和跟随系统。
 
 ## 快速开始
 
@@ -88,8 +72,6 @@ http://服务器IP:8388
 ```
 
 默认监听 `0.0.0.0:8388`，**没有内置登录认证**。不要把 8388 无限制地暴露到公网。详见 [部署前须知](#部署前须知)。
-
----
 
 ## 部署前须知
 
@@ -125,8 +107,6 @@ http://服务器IP:8388
 - 建议 `chmod 600 config.json`
 - 不要把 AK/SK 发到 Issue、截图或 README
 
----
-
 ## 工作原理
 
 ```text
@@ -153,8 +133,6 @@ AccessKey 只在服务端 `config.json` 中使用，浏览器不会直接访问�
 | 页面刷新 | 30 秒 | 浏览器重新拉取展示数据 |
 
 改网页上的刷新间隔，不会改变后端守卫的 60 秒检查。
-
----
 
 ## 完整部署
 
@@ -248,8 +226,6 @@ docker run -d \
   -v "$PWD/history:/app/history" \
   ghcr.io/uncat2310/aliyun-cdt-traffic-guard:latest
 ```
-
----
 
 ## 配置
 
@@ -347,8 +323,6 @@ docker run -d \
 | `servers.<id>.bandwidth_mbps` | `0` | `0` 表示自动探测：配置值 → ECS/EIP → CBWP |
 | `servers.<id>.log_files` | `[]` | 留空则写到 `history/<id>.log` |
 
----
-
 ## 自动保护
 
 判定与常见 CDT 脚本相同：查询 `ListCdtInternetTraffic`，当月总量 ≥ `threshold_gb` 则停止该实例，否则在允许时启动。查询失败这一轮不动机器。
@@ -383,8 +357,6 @@ docker run -d \
 **公网打不开页面**  
 检查安全组、本机防火墙和 `8388`。同时不要对 `0.0.0.0/0` 无保护开放。
 
----
-
 ## 源码运行
 
 ```bash
@@ -396,8 +368,6 @@ pip install -r requirements.txt
 cp config.example.json config.json
 python monitor_service.py
 ```
-
----
 
 ## 技术栈
 
