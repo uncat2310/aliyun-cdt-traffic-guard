@@ -39,6 +39,14 @@ const nodeCountLabel = (count) => {
   return `${count}机`;
 };
 
+const serversGridClass = (count) => {
+  if (count <= 1) return 'is-single';
+  if (count === 2) return 'is-two';
+  if (count === 3) return 'is-three is-compact';
+  if (count === 4) return 'is-four';
+  return 'is-many is-compact';
+};
+
 const listServers = (overview) => {
   if (!overview?.servers) return [];
   if (Array.isArray(overview.server_ids) && overview.server_ids.length) {
@@ -149,7 +157,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const maxDailyVal = Math.ceil(rawMaxD * 10) / 10;
 
   const chartWidth = isMobile ? 540 : 860;
-  const chartHeight = isMobile ? 210 : 190;
+  const chartHeight = isMobile ? 210 : (series.length >= 4 ? 220 : 190);
   const padLeft = isMobile ? 48 : 58;
   const padRight = isMobile ? 16 : 24;
   const padTop = 16;
@@ -174,7 +182,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const barSlot = Math.max(1, series.length);
 
   return (
-    <div className="analytics-section">
+    <div className={`analytics-section ${series.length >= 4 ? 'is-dense' : ''}`}>
       <div className="section-header">
         <div className="section-title">
           <TrendingUp size={17} style={{ color: '#0ea5e9' }} />
@@ -585,13 +593,13 @@ export default function App() {
     : `阿里云 CDT 流量安全监控 · ${firstThreshold}GB/台 额度守护 · 超额自动停机`;
 
   return (
-    <div className="main-viewport">
+    <div className={`main-viewport ${serverList.length >= 3 ? 'is-tall' : ''}`}>
       <div className="bg-ambient">
         <div className="glow-orb-1"></div>
         <div className="glow-orb-2"></div>
       </div>
 
-      <div className="dashboard-container">
+      <div className={`dashboard-container ${serverList.length >= 3 ? 'is-wide' : ''}`}>
         <header className="dashboard-header">
           <div className="header-brand">
             <div className="brand-icon-box">
@@ -724,7 +732,10 @@ export default function App() {
         </section>
 
         {serverList.length > 0 ? (
-          <main className={`servers-grid ${serverList.length === 1 ? 'is-single' : ''}`}>
+          <main
+            className={`servers-grid ${serversGridClass(serverList.length)}`}
+            data-count={serverList.length}
+          >
             {serverList.map((server) => (
               <ServerCard key={server.id} data={server} />
             ))}

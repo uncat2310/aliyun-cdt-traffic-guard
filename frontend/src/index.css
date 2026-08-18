@@ -139,7 +139,11 @@ body {
   padding: 24px 20px 32px;
 }
 
-/* 核心内容容器 (最大宽度 1080px) */
+.main-viewport.is-tall {
+  justify-content: flex-start;
+}
+
+/* 核心内容容器：双机 1080，三台及以上加宽给 3 列留空间 */
 .dashboard-container {
   width: 100%;
   max-width: 1080px;
@@ -147,6 +151,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.dashboard-container.is-wide {
+  max-width: 1280px;
 }
 
 /* 顶部导航栏 */
@@ -387,7 +395,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 主服务器卡片网格：1 台铺满，2 台及以上自适应分列 */
+/* 主服务器卡片网格：按台数切换列数，避免多机挤成难看的 2 列长条 */
 .servers-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -396,6 +404,96 @@ body {
 
 .servers-grid.is-single {
   grid-template-columns: 1fr;
+}
+
+.servers-grid.is-two,
+.servers-grid.is-four {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.servers-grid.is-three,
+.servers-grid.is-many {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.servers-grid > .server-card {
+  min-width: 0;
+}
+
+/* 3 列时最后一行只剩 1 张：居中，不孤零零靠左 */
+@media (min-width: 1181px) {
+  .servers-grid.is-three .server-card:last-child:nth-child(3n + 1),
+  .servers-grid.is-many .server-card:last-child:nth-child(3n + 1) {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: calc(33.333% - 11px);
+    justify-self: center;
+  }
+}
+
+/* 三台及以上：卡片内部收紧，窄列也能放下标题和指标 */
+.servers-grid.is-compact .server-card {
+  padding: 14px 14px;
+  gap: 10px;
+}
+
+.servers-grid.is-compact .card-top-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.servers-grid.is-compact .server-main-title {
+  flex-wrap: wrap;
+}
+
+.servers-grid.is-compact .node-name {
+  font-size: 1rem;
+}
+
+.servers-grid.is-compact .server-sub-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.servers-grid.is-compact .server-status-pills {
+  justify-content: flex-start;
+}
+
+.servers-grid.is-compact .gauge-section {
+  padding: 10px 12px;
+  gap: 12px;
+}
+
+.servers-grid.is-compact .gauge-circle-container {
+  width: 64px;
+  height: 64px;
+}
+
+.servers-grid.is-compact .gauge-val-pct {
+  font-size: 0.92rem;
+}
+
+.servers-grid.is-compact .card-mini-grid {
+  gap: 6px;
+}
+
+.servers-grid.is-compact .mini-stat-box {
+  padding: 7px 8px;
+}
+
+.servers-grid.is-compact .mini-stat-box .title {
+  font-size: 0.62rem;
+}
+
+.servers-grid.is-compact .mini-stat-box .num {
+  font-size: 0.78rem;
+}
+
+.servers-grid.is-compact .card-footer {
+  flex-wrap: wrap;
+  gap: 6px 12px;
 }
 
 .empty-config-card {
@@ -759,6 +857,10 @@ body {
   position: relative;
 }
 
+.analytics-section.is-dense .chart-container {
+  height: 220px;
+}
+
 .chart-svg {
   width: 100%;
   height: 100%;
@@ -831,6 +933,26 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* 中等宽度：3 列收成 2 列，奇数最后一张居中 */
+@media (max-width: 1180px) and (min-width: 769px) {
+  .dashboard-container.is-wide {
+    max-width: 1080px;
+  }
+
+  .servers-grid.is-three,
+  .servers-grid.is-many {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .servers-grid.is-three .server-card:last-child,
+  .servers-grid.is-many .server-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: calc(50% - 8px);
+    justify-self: center;
+  }
+}
+
 /* ================= 移动端屏幕深度优化 (< 768px) ================= */
 @media (max-width: 768px) {
   .main-viewport {
@@ -868,9 +990,24 @@ body {
     font-size: 1.05rem;
   }
 
-  .servers-grid {
+  .servers-grid,
+  .servers-grid.is-single,
+  .servers-grid.is-two,
+  .servers-grid.is-three,
+  .servers-grid.is-four,
+  .servers-grid.is-many {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .servers-grid.is-three .server-card:last-child,
+  .servers-grid.is-three .server-card:last-child:nth-child(3n + 1),
+  .servers-grid.is-many .server-card:last-child,
+  .servers-grid.is-many .server-card:last-child:nth-child(odd),
+  .servers-grid.is-many .server-card:last-child:nth-child(3n + 1) {
+    grid-column: auto;
+    max-width: none;
+    justify-self: stretch;
   }
 
   .server-card {
