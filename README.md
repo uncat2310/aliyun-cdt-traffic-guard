@@ -27,12 +27,16 @@
 <br/>
 
 <a href="https://traffic.honkai3rd.eu.org">
-  <img src="docs/images/dashboard-light.png" alt="流量守卫 Dashboard：三台示例节点的用量、状态与 72 小时累积趋势" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/dashboard-light.png">
+    <img src="docs/images/dashboard-dark.png" alt="流量守卫 Dashboard：工业级深色主题、三列对称卡片指标与 24 小时 / 72 小时流量走势" />
+  </picture>
 </a>
 
 <br/>
 
-<sub>Demo 使用示例数据，仅用于界面展示。</sub>
+<sub>全新工业级深色主题与对称指标设计，支持深浅色无缝切换。Demo 使用示例数据。</sub>
 
 </div>
 
@@ -40,11 +44,13 @@
 
 ## 功能
 
-- **流量监控**：按节点展示当月已用、剩余额度、日均消耗和预计可用天数。
-- **趋势分析**：72H 累积趋势与 14D 每日消耗，支持 Hover 查看明细。
-- **多节点**：每台节点可配置独立地域、阈值和 AccessKey。
-- **自动保护**：达到安全阈值自动停止 ECS，并支持条件满足后自动启动。
-- **Dashboard**：响应式设计，支持浅色、深色和跟随系统。
+- **深色主题全面重构**：全新 Linear / Vercel 极简工业炭黑深色风格（`#09090b`），深浅主题与系统偏好无缝适配，高对比度低眼疲劳。
+- **三列对称指标系统**：节点卡片重构为「环形用量占比仪表 - 本月已用/阈值 - 剩余额度」对称三列布局，视觉重心稳定，关键指标一目了然。
+- **24H 动态走势对齐**：流量折线图末端精准锚定至当前分钟（`now_min`），消除整点离散延迟，支持 24H 累计走势与 7D/14D 每日消耗平滑展示。
+- **动态 80% 健康警戒芯片**：引入分级状态芯片（Health Chip），用量低于 80% 保持稳态「健康」，达标 80% 后动态流转为「流量偏高」「流量预警」与「即将耗尽」。
+- **高性能预热与 SSR-Lite 架构**：内置内存级数据预热（In-Memory Pre-Warming）与 HTML 初始状态直出注入（`window.__INITIAL_DATA__`），秒开零白屏，支持 Gzip/不可变静态资源缓存与 12s 智能轮询。
+- **多云扩展网关（Multi-Cloud Add-on）**：提供轻量 HTTP 网关规范，支持无侵入式接入 GCP-US 等多云服务商出网流量，多云账单统一守卫。
+- **自动防超额熔断**：达到安全阈值自动关机（Stop ECS），并在次月重置或条件满足后自动开机，规避天价超额账单。
 
 ## 快速开始
 
@@ -107,19 +113,25 @@ http://服务器IP:8388
 - 建议 `chmod 600 config.json`
 - 不要把 AK/SK 发到 Issue、截图或 README
 
-## 工作原理
+## 工作原理与架构
 
 ```text
+多云扩展网关 (GCP-US 等)
+       ↓  (Add-on Gateway)
 Aliyun CDT / ECS / VPC API
-          ↓
- Traffic Guard Backend
-    ├─ 查询当月 CDT 流量
-    ├─ 查询 ECS 状态
-    ├─ 写入历史日志
-    ├─ 与 threshold_gb 比较
-    └─ 必要时 Start / Stop ECS
-          ↓
-     React Dashboard
+       ↓
+Traffic Guard Backend (Python 3.10+)
+  ├─ In-Memory Pre-Warming 内存缓存池 (12s 异步预热)
+  ├─ SSR-Lite 预渲染注入 (window.__INITIAL_DATA__)
+  ├─ 24H 时间线当前分钟锚定 (now_min 实时平滑拼接)
+  ├─ 历史持久化 (history/*.log) 与多周期趋势聚算
+  ├─ 与 threshold_gb 比较判定
+  └─ 必要时调用阿里云 SDK 执行 Start / Stop ECS
+       ↓  (HTTP / 内置高性能缓存静态服务)
+React Dashboard (Linear Dark / Modern Light)
+  ├─ 三列对称指标卡片 (环形仪表 + 已用/阈值 + 剩余)
+  ├─ 动态 80% 健康警戒芯片 (健康 / 偏高 / 预警 / 耗尽)
+  └─ 24H 累计走势 & 14D 每日消耗趋势分析
 ```
 
 AccessKey 只在服务端 `config.json` 中使用，浏览器不会直接访问阿里云 API。
@@ -128,11 +140,26 @@ AccessKey 只在服务端 `config.json` 中使用，浏览器不会直接访问�
 
 | | 默认 | 作用 |
 | --- | --- | --- |
-| 后端轮询 | 约 12 秒 | 刷新内存中的用量和状态 |
+| 后端轮询 | 约 12 秒 | 刷新内存中的用量和状态（Pre-Warming 预热） |
 | `guard_interval_seconds` | 60 秒 | 写历史，并决定是否开关机 |
-| 页面刷新 | 30 秒 | 浏览器重新拉取展示数据 |
+| 页面自动刷新 | 30 秒 | 浏览器定时拉取展示数据（也可随时点击「刷新」实时同步） |
 
-改网页上的刷新间隔，不会改变后端守卫的 60 秒检查。
+前端刷新不会改变后端守卫的 60 秒检查节奏。
+
+## 多云扩展与网关集成
+
+面板原生支持多云扩展网关（如 GCP-US 出网流量守卫），通过外置轻量网关在 HTTP 边界将其他云厂商节点无侵入聚合至同一个 Dashboard：
+
+```text
+[浏览器 Client]
+      ↓
+[GCP-US Dashboard Gateway (:18888)]
+      ├─ 拦截 /api/overview 与 /api/history，合并 GCP-US 节点用量与走势
+      └─ 其余静态资源与原生 API 原样透明反代至 Traffic Guard (:8388)
+```
+
+- **无侵入聚合**：无需修改主程序核心逻辑，单面板同时掌握香港、东京与 GCP 美国等全域节点用量。
+- **标准契约**：遵循统一的节点 JSON 状态模型，自动复用三列对称卡片、80% 动态状态芯片与 24H 趋势图渲染。
 
 ## 完整部署
 
@@ -369,7 +396,7 @@ python monitor_service.py
 
 ## 技术栈
 
-Python 3.10+ · React 19 · Docker · GitHub Container Registry
+Python 3.10+ · React 19 · Vite · SSR-Lite · Playwright · Docker · GitHub Container Registry
 
 ---
 

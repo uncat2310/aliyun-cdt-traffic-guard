@@ -7,8 +7,29 @@
     <meta name="description" content="阿里云香港服务器流量守卫监控面板" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('traffic_guard_theme');
+          var isLight = t === 'light';
+          document.documentElement.className = isLight ? 'light-theme' : 'dark-theme';
+        } catch(e) {}
+      })();
+    </script>
   </head>
-  <body class="light-theme">
+  <body class="dark-theme">
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('traffic_guard_theme');
+          if (t === 'light') {
+            document.body.className = 'light-theme';
+          } else {
+            document.body.className = 'dark-theme';
+          }
+        } catch(e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
