@@ -566,6 +566,19 @@ def compute_history_data():
         item["total_delta_gb"] = round(total, 3)
         merged_daily.append(item)
 
+    now_min = datetime.now().strftime("%Y-%m-%d %H:%M")
+    if merged_hourly:
+        last_t = merged_hourly[-1].get("time", "")
+        if last_t != now_min:
+            latest_pt = {
+                "time": now_min,
+                "values": dict(merged_hourly[-1].get("values", {})),
+                "total_gb": merged_hourly[-1].get("total_gb", 0.0)
+            }
+            for s_key, v in latest_pt["values"].items():
+                latest_pt[f"{s_key}_gb"] = v
+            merged_hourly.append(latest_pt)
+
     return {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "servers": build_server_series_meta(),

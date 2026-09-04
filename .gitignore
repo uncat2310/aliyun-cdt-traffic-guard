@@ -1,6 +1,7 @@
 # Node dependencies
 node_modules/
 dist/
+backend/dashboard_dist/
 
 # Python artifacts
 __pycache__/

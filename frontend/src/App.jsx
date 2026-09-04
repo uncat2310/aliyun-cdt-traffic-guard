@@ -10,19 +10,20 @@ import {
   Wifi,
   ChevronDown
 } from 'lucide-react';
+import { DEMO_OVERVIEW, DEMO_HISTORY, getDemoOverview, getDemoHistory } from './demoData.js';
 
 const API_BASE = window.location.origin;
 const GITHUB_REPO_URL = 'https://github.com/uncat2310/aliyun-cdt-traffic-guard';
 
 const SERIES_COLORS = [
-  '#0ea5e9',
-  '#6366f1',
-  '#10b981',
-  '#f59e0b',
+  '#38bdf8',
+  '#818cf8',
+  '#34d399',
+  '#fbbf24',
   '#f43f5e',
-  '#8b5cf6',
-  '#14b8a6',
-  '#f97316'
+  '#a78bfa',
+  '#2dd4bf',
+  '#fb923c'
 ];
 
 const formatNum = (num, digits = 2) => {
@@ -184,13 +185,23 @@ const serversGridClass = (count) => {
   return 'is-many';
 };
 
-const trafficHealth = (daysLeft) => {
+const trafficHealth = (percentage, daysLeft) => {
+  const pct = Number(percentage) || 0;
   const days = Number(daysLeft);
-  if (!Number.isFinite(days)) return { key: 'ok', label: '健康' };
-  if (days < 7) return { key: 'critical', label: '即将耗尽' };
-  if (days < 15) return { key: 'warn', label: '流量预警' };
-  if (days < 30) return { key: 'elevated', label: '流量偏高' };
-  return { key: 'ok', label: '健康' };
+
+  // 额度使用率低于 80% 时，始终显示为健康
+  if (pct < 80) {
+    return { key: 'ok', label: '健康' };
+  }
+
+  // 使用率达到 80% 之后才显示流量偏高或预警/耗尽
+  if (pct >= 95 || (Number.isFinite(days) && days < 3)) {
+    return { key: 'critical', label: '即将耗尽' };
+  }
+  if (pct >= 90 || (Number.isFinite(days) && days < 7)) {
+    return { key: 'warn', label: '流量预警' };
+  }
+  return { key: 'elevated', label: '流量偏高' };
 };
 
 const SPARK_WINDOW_HOURS = 3;
@@ -216,7 +227,7 @@ const incrementalValuesFor = (historyData, serverId) => {
 const gaugeColor = (percentage) => {
   if (percentage >= 85) return '#f43f5e';
   if (percentage >= 65) return '#f59e0b';
-  return '#0ea5e9';
+  return '#38bdf8';
 };
 
 const listServers = (overview) => {
@@ -348,8 +359,8 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
 
   const isMobile = viewport < 768;
   const isNarrow = viewport < 640;
-  const hourly = historyData.hourly || [];
-  const daily = historyData.daily || [];
+  const hourly = (historyData.hourly || []).slice(-25);
+  const daily = (historyData.daily || []).slice(-7);
 
   const rawMaxH = Math.max(
     0.1,
@@ -389,14 +400,28 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
     }, '');
   };
 
-  const shouldShowHourlyTick = (idx) => {
-    if (hourly.length <= 1) return true;
-    if (idx === 0 || idx === hourly.length - 1) return true;
-    const target = isNarrow ? 3 : isMobile ? 4 : 6;
-    const step = Math.max(1, Math.round((hourly.length - 1) / (target - 1)));
-    if (idx % step !== 0) return false;
-    return hourly.length - 1 - idx >= Math.max(1, Math.floor(step * 0.6));
-  };
+  const HOURLY_INTERVALS = 6;
+  const latestPointTime = hourly.length > 0 && hourly[hourly.length - 1]?.time
+    ? new Date(hourly[hourly.length - 1].time.replace(/-/g, '/')).getTime()
+    : Date.now();
+  const endTs = !isNaN(latestPointTime) && Math.abs(Date.now() - latestPointTime) < 3600 * 1000
+    ? latestPointTime
+    : Date.now();
+
+  const hourlyTicks = [];
+  for (let i = 0; i <= HOURLY_INTERVALS; i += 1) {
+    const ratio = i / HOURLY_INTERVALS;
+    const tickDate = new Date(endTs - (HOURLY_INTERVALS - i) * 4 * 3600 * 1000);
+    const m = String(tickDate.getMonth() + 1).padStart(2, '0');
+    const d = String(tickDate.getDate()).padStart(2, '0');
+    const h = String(tickDate.getHours()).padStart(2, '0');
+    const min = String(tickDate.getMinutes()).padStart(2, '0');
+    hourlyTicks.push({
+      x: padLeft + ratio * graphW,
+      time: `${m}-${d} ${h}:${min}`,
+      align: i === 0 ? 'start' : (i === HOURLY_INTERVALS ? 'end' : 'middle')
+    });
+  }
 
   const shouldShowDailyTick = (idx) => {
     if (daily.length <= 1) return true;
@@ -478,7 +503,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
     <div className={`analytics-section ${series.length >= 4 ? 'is-dense' : ''}`}>
       <div className="section-header">
         <div className="section-title">
-          <TrendingUp size={17} style={{ color: '#0ea5e9' }} />
+          <TrendingUp size={17} style={{ color: '#38bdf8' }} />
           <span>流量动态与趋势分析</span>
         </div>
         <div className="tab-group">
@@ -486,13 +511,13 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
             className={`tab-btn ${activeTab === 'hourly' ? 'active' : ''}`}
             onClick={() => { setActiveTab('hourly'); setHover(null); }}
           >
-            72H 累积走势
+            24H 累计走势
           </button>
           <button
             className={`tab-btn ${activeTab === 'daily' ? 'active' : ''}`}
             onClick={() => { setActiveTab('daily'); setHover(null); }}
           >
-            14D 每日消耗
+            7D 每日消耗
           </button>
         </div>
       </div>
@@ -592,27 +617,20 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
               </text>
             ))}
 
-            {hourly.map((pt, idx) => {
-              if (!shouldShowHourlyTick(idx)) return null;
-              const x = padLeft + (idx / (hourly.length - 1 || 1)) * graphW;
-              const timeLabel = pt.time.slice(5, 16);
-              const align = idx === 0 ? 'start' : (idx === hourly.length - 1 ? 'end' : 'middle');
-
-              return (
-                <g key={idx}>
-                  <line x1={x} y1={baselineY} x2={x} y2={baselineY + 4} className="chart-tick-line" />
-                  <text
-                    x={x}
-                    y={baselineY + 16}
-                    textAnchor={align}
-                    dominantBaseline="central"
-                    className="chart-axis-text chart-x-text"
-                  >
-                    {timeLabel}
-                  </text>
-                </g>
-              );
-            })}
+            {hourlyTicks.map((tick, i) => (
+              <g key={i}>
+                <line x1={tick.x} y1={baselineY} x2={tick.x} y2={baselineY + 4} className="chart-tick-line" />
+                <text
+                  x={tick.x}
+                  y={baselineY + 16}
+                  textAnchor={tick.align}
+                  dominantBaseline="central"
+                  className="chart-axis-text chart-x-text"
+                >
+                  {tick.time}
+                </text>
+              </g>
+            ))}
 
             {hover?.kind === 'hourly' && hoverPoint && (
               <g className="chart-hover-layer">
@@ -734,7 +752,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   );
 };
 
-const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
+const ServerCard = ({ data, variant = 'compact' }) => {
   if (!data) return null;
 
   const traffic = data.traffic || {};
@@ -742,8 +760,7 @@ const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
   const usedPct = Math.min(Number(traffic.percentage) || 0, 100);
   const threshold = traffic.threshold_gb ?? 180;
   const daysLeft = traffic.days_left_est;
-  const health = trafficHealth(daysLeft);
-  const daysText = daysLeft > 90 ? '> 90 天' : `${formatNum(daysLeft ?? 0, 0)} 天`;
+  const health = trafficHealth(usedPct, daysLeft);
   const isHero = variant === 'hero';
 
   return (
@@ -764,41 +781,26 @@ const ServerCard = ({ data, sparkline = [], variant = 'compact' }) => {
         </div>
       </header>
 
-      <div className="card-gauge">
-        <DonutGauge percentage={usedPct} size={isHero ? 120 : 72} stroke={isHero ? 10 : 7} />
-      </div>
-
-      <div className="card-stats">
-        <div className="used-block">
+      <div className="card-metrics">
+        <div className="metric-col is-gauge">
+          <DonutGauge percentage={usedPct} size={isHero ? 78 : 68} stroke={isHero ? 7.5 : 6.5} />
+        </div>
+        <div className="metric-divider" aria-hidden="true" />
+        <div className="metric-col">
           <div className="used-value">
             {formatNum(traffic.used_gb, 2)}
             <small>GB</small>
           </div>
           <div className="used-caption">本月已用 / {formatNum(threshold, 0)} GB</div>
         </div>
-        <div className="kpi-grid">
-          <div className="kpi-item">
-            <div className="kpi-num">{formatNum(traffic.remaining_gb, 2)} <small>GB</small></div>
-            <div className="kpi-lab">剩余额度</div>
+        <div className="metric-divider" aria-hidden="true" />
+        <div className="metric-col">
+          <div className="used-value is-remain">
+            {formatNum(traffic.remaining_gb, 2)}
+            <small>GB</small>
           </div>
-          <div className="kpi-item">
-            <div className="kpi-num">{formatNum(traffic.daily_avg_gb, 2)} <small>GB/d</small></div>
-            <div className="kpi-lab">日均消耗</div>
-          </div>
-          <div className="kpi-item">
-            <div className={`kpi-num ${daysLeft < 10 ? 'is-hot' : ''}`}>{daysText}</div>
-            <div className="kpi-lab">预计可用</div>
-          </div>
+          <div className="used-caption">剩余额度</div>
         </div>
-      </div>
-
-      <div className="card-spark">
-        <Sparkline
-          values={sparkline}
-          color={gaugeColor(usedPct)}
-          uid={data.id || data.name || 'node'}
-          last24h={isHero && sparkline.length ? sparkline.slice(-8).reduce((sum, value) => sum + value, 0) : null}
-        />
       </div>
     </article>
   );
@@ -813,13 +815,22 @@ export default function App() {
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef(null);
 
-  const [overview, setOverview] = useState(() => initialData?.overview || null);
-  const [history, setHistory] = useState(() => initialData?.history || null);
+  const [overview, setOverview] = useState(() => {
+    if (initialData?.overview && Object.keys(initialData.overview.servers || {}).length > 0) {
+      return initialData.overview;
+    }
+    return getDemoOverview();
+  });
+  const [history, setHistory] = useState(() => {
+    if (initialData?.history && (initialData.history.hourly?.length || initialData.history.daily?.length)) {
+      return initialData.history;
+    }
+    return getDemoHistory();
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [syncPulse, setSyncPulse] = useState(false);
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(30);
   const [lastUpdated, setLastUpdated] = useState(() => {
-    return initialData?.overview?.timestamp ? initialData.overview.timestamp.slice(11) : '';
+    return initialData?.overview?.timestamp ? initialData.overview.timestamp.slice(11) : new Date().toLocaleTimeString();
   });
 
   useEffect(() => {
@@ -876,13 +887,24 @@ export default function App() {
         fetch(`${API_BASE}/api/history`).then(r => r.json())
       ]);
 
-      setOverview(ovRes);
-      setHistory(histRes);
+      if (ovRes && ovRes.servers && Object.keys(ovRes.servers).length > 0) {
+        setOverview(ovRes);
+      }
+      if (histRes && (histRes.hourly?.length || histRes.daily?.length)) {
+        setHistory(histRes);
+      }
       setLastUpdated(new Date().toLocaleTimeString());
       setSyncPulse(true);
       window.setTimeout(() => setSyncPulse(false), 420);
     } catch (err) {
-      console.error('Failed to fetch monitoring data:', err);
+      // In local preview/offline dev mode, update pulse & refresh demo history anchored to now
+      if (!initialData?.overview) {
+        setOverview(getDemoOverview());
+        setHistory(getDemoHistory());
+      }
+      setLastUpdated(new Date().toLocaleTimeString());
+      setSyncPulse(true);
+      window.setTimeout(() => setSyncPulse(false), 420);
     } finally {
       if (isManual) {
         setTimeout(() => setRefreshing(false), 300);
@@ -897,12 +919,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (autoRefreshInterval <= 0) return;
     const timer = setInterval(() => {
       fetchData(false);
-    }, autoRefreshInterval * 1000);
+    }, 30 * 1000);
     return () => clearInterval(timer);
-  }, [autoRefreshInterval]);
+  }, []);
 
   const serverList = listServers(overview);
   const nodeTotal = overview?.summary?.nodes_total ?? serverList.length;
@@ -924,17 +945,12 @@ export default function App() {
 
   return (
     <div className={`main-viewport ${serverList.length >= 3 ? 'is-tall' : ''}`}>
-      <div className="bg-ambient">
-        <div className="glow-orb-1"></div>
-        <div className="glow-orb-2"></div>
-      </div>
-
       <div className={`dashboard-container ${serverList.length >= 3 ? 'is-wide' : ''}`}>
         <header className="dashboard-header">
           <div className="header-brand">
             <div className={`brand-icon-box ${syncPulse ? 'is-syncing' : ''}`}>
               <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
-                <path d="M 14 33 L 24 33 L 29 19 L 36 45 L 41 29 L 50 33" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M 14 33 L 24 33 L 29 19 L 36 45 L 41 29 L 50 33" stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <div className="brand-titles">
@@ -943,17 +959,6 @@ export default function App() {
           </div>
 
           <div className="header-controls">
-            <select
-              className="select-input"
-              value={autoRefreshInterval}
-              onChange={e => setAutoRefreshInterval(Number(e.target.value))}
-              title="自动刷新间隔"
-            >
-              <option value={10}>⚡ 10s 刷新</option>
-              <option value={30}>⏱ 30s 刷新</option>
-              <option value={60}>⌛ 60s 刷新</option>
-              <option value={0}>⏹ 暂停刷新</option>
-            </select>
 
             <button
               className="btn btn-primary"
@@ -1025,9 +1030,6 @@ export default function App() {
             <div className="summary-meta">
               <div className="label">剩余额度</div>
               <div className="value is-remain">{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
-              {fleetDays != null && (
-                <div className="summary-hint">按当前速度约 {fleetDays > 90 ? '> 90' : fleetDays} 天</div>
-              )}
             </div>
           </div>
 
@@ -1062,7 +1064,6 @@ export default function App() {
                 key={server.id}
                 data={server}
                 variant={isHeroLayout ? 'hero' : 'compact'}
-                sparkline={incrementalValuesFor(history, server.id)}
               />
             ))}
           </main>
