@@ -96,8 +96,11 @@ body {
   color: var(--text-primary);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
   overflow-x: hidden;
+}
+
+html.theme-transition body {
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 body.dark-theme,
@@ -273,6 +276,41 @@ body.light-theme .brand-wordmark {
   gap: 8px;
 }
 
+.header-statuses {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-right: 20px;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.header-status-value {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.header-status-online {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  flex-shrink: 0;
+}
+
+.header-status-sync {
+  color: var(--text-secondary);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -295,16 +333,33 @@ body.light-theme .brand-wordmark {
 }
 
 .btn-primary {
-  background: #0284c7;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 8px rgba(2, 132, 199, 0.35);
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--accent-blue);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  box-shadow: none;
 }
 
 .btn-primary:hover {
-  background: #0369a1;
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 12px rgba(2, 132, 199, 0.45);
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.25);
+  box-shadow: none;
+}
+
+body.light-theme .btn-primary {
+  background: #eaf5fd;
+  color: #0284c7;
+  border-color: #d7ecfa;
+}
+
+body.light-theme .btn-primary:hover {
+  background: #dff0fc;
+  border-color: #b9def5;
+}
+
+.dashboard-header .btn {
+  height: 36px;
+  border-radius: 8px;
+  box-shadow: none;
 }
 
 .select-input {
@@ -1172,7 +1227,17 @@ body.light-theme .tab-btn.active {
 
   .header-controls {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .header-statuses {
+    gap: 10px;
+    margin-right: auto;
+  }
+
+  .header-status-label {
+    display: none;
   }
 
   .summary-grid {

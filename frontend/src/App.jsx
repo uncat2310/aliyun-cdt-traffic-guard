@@ -7,7 +7,6 @@ import {
   Check,
   TrendingUp,
   Clock,
-  Wifi,
   ChevronDown
 } from 'lucide-react';
 import { DEMO_OVERVIEW, DEMO_HISTORY, getDemoOverview, getDemoHistory } from './demoData.js';
@@ -855,6 +854,8 @@ export default function App() {
       } else {
         isDark = false;
       }
+      document.documentElement.classList.toggle('dark-theme', isDark);
+      document.documentElement.classList.toggle('light-theme', !isDark);
       document.body.className = isDark ? 'dark-theme' : 'light-theme';
     };
 
@@ -869,6 +870,7 @@ export default function App() {
   }, [themeMode]);
 
   const selectTheme = (mode) => {
+    document.documentElement.classList.add('theme-transition');
     setThemeMode(mode);
     setShowThemeDropdown(false);
   };
@@ -959,6 +961,19 @@ export default function App() {
           </div>
 
           <div className="header-controls">
+            <div className="header-statuses">
+              <div className="header-status" title="节点状态">
+                <span className="header-status-online" aria-hidden="true" />
+                <span className="header-status-label">节点状态</span>
+                <span className="header-status-value">{summary.running_count || 0}/{summary.nodes_total || 0}</span>
+                <span>在线</span>
+              </div>
+              <div className="header-status" title="数据同步">
+                <Clock size={14} className="header-status-sync" />
+                <span className="header-status-label">数据同步</span>
+                <span className="header-status-value">{lastUpdated || '--:--:--'}</span>
+              </div>
+            </div>
 
             <button
               className="btn btn-primary"
@@ -1013,46 +1028,6 @@ export default function App() {
             </div>
           </div>
         </header>
-
-        <section className="summary-grid">
-          <div className="summary-card">
-            <DonutGauge percentage={summary.total_percentage} size={44} stroke={4.5} />
-            <div className="summary-meta">
-              <div className="label">总流量</div>
-              <div className="value">
-                {formatNum(summary.total_used_gb, 2)}
-                <small>/ {formatNum(summary.total_threshold_gb, 0)} GB</small>
-              </div>
-            </div>
-          </div>
-
-          <div className="summary-card">
-            <div className="summary-meta">
-              <div className="label">剩余额度</div>
-              <div className="value is-remain">{formatNum(summary.total_remaining_gb, 2)} <small>GB</small></div>
-            </div>
-          </div>
-
-          <div className="summary-card">
-            <div className="summary-icon icon-cyan">
-              <Wifi size={18} />
-            </div>
-            <div className="summary-meta">
-              <div className="label">节点状态</div>
-              <div className="value">{summary.running_count || 0}<span className="value-sep">/</span>{summary.nodes_total || 0} <small>在线</small></div>
-            </div>
-          </div>
-
-          <div className="summary-card">
-            <div className="summary-icon icon-amber">
-              <Clock size={18} />
-            </div>
-            <div className="summary-meta">
-              <div className="label">数据同步</div>
-              <div className="value is-time">{lastUpdated || '--:--:--'}</div>
-            </div>
-          </div>
-        </section>
 
         {serverList.length > 0 ? (
           <main
