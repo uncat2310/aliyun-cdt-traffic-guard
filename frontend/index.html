@@ -7,11 +7,16 @@
     <meta name="description" content="阿里云香港服务器流量守卫监控面板" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      html { background-color: #09090b; color-scheme: dark; }
+      html.light-theme { background-color: #f8fafc; color-scheme: light; }
+      body { background-color: inherit; }
+    </style>
     <script>
       (function() {
         try {
           var t = localStorage.getItem('traffic_guard_theme');
-          var isLight = t === 'light';
+          var isLight = t === 'light' || ((!t || t === 'system') && !window.matchMedia('(prefers-color-scheme: dark)').matches);
           document.documentElement.className = isLight ? 'light-theme' : 'dark-theme';
         } catch(e) {}
       })();
@@ -19,16 +24,7 @@
   </head>
   <body class="dark-theme">
     <script>
-      (function() {
-        try {
-          var t = localStorage.getItem('traffic_guard_theme');
-          if (t === 'light') {
-            document.body.className = 'light-theme';
-          } else {
-            document.body.className = 'dark-theme';
-          }
-        } catch(e) {}
-      })();
+      document.body.className = document.documentElement.classList.contains('light-theme') ? 'light-theme' : 'dark-theme';
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
