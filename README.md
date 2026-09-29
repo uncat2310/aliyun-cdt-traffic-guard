@@ -30,13 +30,13 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/images/dashboard-light.png">
-    <img src="docs/images/dashboard-dark.png" alt="流量守卫 Dashboard：工业级深色主题、三列对称卡片指标与 24 小时 / 72 小时流量走势" />
+    <img src="docs/images/dashboard-dark.png" alt="流量守卫 Dashboard：精简顶栏、平稳卡片、工业级双主题与 24 小时 / 72 小时流量走势" />
   </picture>
 </a>
 
 <br/>
 
-<sub>全新工业级深色主题与对称指标设计，支持深浅色无缝切换。Demo 使用示例数据。</sub>
+<sub>全新极简工业风与对称指标设计，顶栏状态内联精简，交互平稳无抖动，支持深浅色无缝切换。Demo 使用示例数据。</sub>
 
 </div>
 
@@ -44,7 +44,8 @@
 
 ## 功能
 
-- **深色主题全面重构**：全新 Linear / Vercel 极简工业炭黑深色风格（`#09090b`），深浅主题与系统偏好无缝适配，高对比度低眼疲劳。
+- **精简顶栏与平稳交互**：顶栏精简为内联状态标签（在线节点与数据同步时间），刷新按钮固定宽度（84px）并居中，刷新中不再挤压抖动；节点卡片悬浮保持平稳外观，杜绝交互跳动。
+- **深色主题全面重构与防闪白**：全新 Linear / Vercel 极简工业炭黑深色风格（`#09090b`），内置 Anti-FOUC 机制彻底杜绝深色刷新闪白，深浅主题与系统偏好无缝适配。
 - **三列对称指标系统**：节点卡片重构为「环形用量占比仪表 - 本月已用/阈值 - 剩余额度」对称三列布局，视觉重心稳定，关键指标一目了然。
 - **24H 动态走势对齐**：流量折线图末端精准锚定至当前分钟（`now_min`），消除整点离散延迟，支持 24H 累计走势与 7D/14D 每日消耗平滑展示。
 - **动态 80% 健康警戒芯片**：引入分级状态芯片（Health Chip），用量低于 80% 保持稳态「健康」，达标 80% 后动态流转为「流量偏高」「流量预警」与「即将耗尽」。
@@ -129,7 +130,8 @@ Traffic Guard Backend (Python 3.10+)
   └─ 必要时调用阿里云 SDK 执行 Start / Stop ECS
        ↓  (HTTP / 内置高性能缓存静态服务)
 React Dashboard (Linear Dark / Modern Light)
-  ├─ 三列对称指标卡片 (环形仪表 + 已用/阈值 + 剩余)
+  ├─ 精简顶栏内联状态 (节点状态 + 同步时间 + 84px 稳定刷新按钮)
+  ├─ 三列对称平稳卡片 (环形仪表 + 已用/阈值 + 剩余额度，无浮动抖动)
   ├─ 动态 80% 健康警戒芯片 (健康 / 偏高 / 预警 / 耗尽)
   └─ 24H 累计走势 & 14D 每日消耗趋势分析
 ```
