@@ -422,6 +422,11 @@ body.light-theme .btn-primary:hover {
 }
 
 .theme-option {
+  width: 100%;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -736,6 +741,8 @@ body.light-theme .icon-cyan { background: rgba(6, 182, 212, 0.08); border-color:
 
 .status-text.is-on { color: var(--badge-online-text); }
 .status-text.is-off { color: var(--badge-offline-text); }
+.status-text.is-pending { color: #f59e0b; }
+.status-text.is-unknown { color: var(--text-muted); }
 
 .status-text .dot {
   width: 6px;
@@ -759,7 +766,8 @@ body.light-theme .icon-cyan { background: rgba(6, 182, 212, 0.08); border-color:
 }
 
 .health-chip.is-warn,
-.health-chip.is-critical {
+.health-chip.is-critical,
+.health-chip.is-error {
   background: rgba(244, 63, 94, 0.08);
   border: 1px solid rgba(244, 63, 94, 0.18);
   color: #fb7185;
@@ -835,41 +843,6 @@ body.light-theme .used-value.is-remain {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: center;
-}
-
-.sparkline {
-  min-width: 0;
-}
-
-.sparkline-caption {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin-bottom: 2px;
-}
-
-.sparkline-aux {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.sparkline-svg {
-  width: 100%;
-  height: 46px;
-  display: block;
-}
-
-.sparkline.is-empty {
-  height: 46px;
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
-.server-card.is-hero .sparkline-svg {
-  height: 50px;
 }
 
 .progress-bar-wrap {
@@ -1322,5 +1295,31 @@ body.light-theme .tab-btn.active {
 
   .dashboard-footer {
     padding-top: 8px;
+  }
+}
+
+/* 同步失败：保留旧数据，但把状态标红 */
+.header-status.is-error,
+.header-status.is-error .header-status-value,
+.header-status.is-error .header-status-sync {
+  color: #fb7185;
+}
+
+/* 键盘操作时的焦点可见 */
+.btn:focus-visible,
+.tab-btn:focus-visible,
+.theme-option:focus-visible,
+.footer-github:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

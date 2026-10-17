@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   RefreshCw,
   Sun,
@@ -9,10 +9,50 @@ import {
   Clock,
   ChevronDown
 } from 'lucide-react';
-import { DEMO_OVERVIEW, DEMO_HISTORY, getDemoOverview, getDemoHistory } from './demoData.js';
+import { getDemoOverview, getDemoHistory } from './demoData.js';
 
 const API_BASE = window.location.origin;
 const GITHUB_REPO_URL = 'https://github.com/uncat2310/aliyun-cdt-traffic-guard';
+const THEME_STORAGE_KEY = 'traffic_guard_theme';
+const POLL_INTERVAL_MS = 30 * 1000;
+const FETCH_TIMEOUT_MS = 20 * 1000;
+const HOUR_MS = 3600 * 1000;
+const CHART_WINDOW_MS = 24 * HOUR_MS;
+
+// 浏览器禁用存储（隐私模式、拦截站点数据）时 localStorage 会抛异常，不能让整页崩掉
+const readStoredTheme = () => {
+  try {
+    const value = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return ['system', 'light', 'dark'].includes(value) ? value : 'system';
+  } catch {
+    return 'system';
+  }
+};
+
+const storeTheme = (value) => {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, value);
+  } catch {
+    // 存不下就只在本次会话生效
+  }
+};
+
+/** 解析后端的本地时间字符串 "YYYY-MM-DD HH:MM"，失败返回 NaN（不依赖各浏览器对日期格式的宽松解析） */
+const parseLocalTime = (value) => {
+  const m = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value) : null;
+  if (!m) return NaN;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).getTime();
+};
+
+const STATUS_INFO = {
+  Running: { key: 'on', label: '运行中' },
+  Stopped: { key: 'off', label: '已关机' },
+  Starting: { key: 'pending', label: '启动中' },
+  Pending: { key: 'pending', label: '启动中' },
+  Stopping: { key: 'pending', label: '关机中' },
+};
+
+const statusInfo = (status) => STATUS_INFO[status] || { key: 'unknown', label: '状态未知' };
 
 const SERIES_COLORS = [
   '#38bdf8',
@@ -203,26 +243,6 @@ const trafficHealth = (percentage, daysLeft) => {
   return { key: 'elevated', label: '流量偏高' };
 };
 
-const SPARK_WINDOW_HOURS = 3;
-
-const incrementalValuesFor = (historyData, serverId) => {
-  const hourly = historyData?.hourly || [];
-  if (hourly.length < 2) return [];
-
-  const hourDeltas = [];
-  for (let i = 1; i < hourly.length; i += 1) {
-    const delta = getHourlyVal(hourly[i], serverId) - getHourlyVal(hourly[i - 1], serverId);
-    hourDeltas.push(delta > 0 ? delta : 0);
-  }
-
-  const windows = [];
-  for (let i = 0; i + SPARK_WINDOW_HOURS <= hourDeltas.length; i += SPARK_WINDOW_HOURS) {
-    const slice = hourDeltas.slice(i, i + SPARK_WINDOW_HOURS);
-    windows.push(slice.reduce((sum, value) => sum + value, 0));
-  }
-  return windows;
-};
-
 const gaugeColor = (percentage) => {
   if (percentage >= 85) return '#f43f5e';
   if (percentage >= 65) return '#f59e0b';
@@ -265,7 +285,7 @@ const getDailyVal = (point, seriesId) => {
   return Number(point?.[`${seriesId}_delta_gb`]) || 0;
 };
 
-const DonutGauge = ({ percentage = 0, size = 72, stroke = 7 }) => {
+const DonutGauge = ({ percentage = 0, size = 72, stroke = 7, unknown = false }) => {
   const pct = Math.min(Math.max(Number(percentage) || 0, 0), 100);
   const radius = (size - stroke) / 2;
   const cx = size / 2;
@@ -291,51 +311,8 @@ const DonutGauge = ({ percentage = 0, size = 72, stroke = 7 }) => {
         />
       </svg>
       <div className="donut-center">
-        <span className="donut-pct" style={{ color }}>{formatNum(pct, 0)}%</span>
+        <span className="donut-pct" style={unknown ? undefined : { color }}>{unknown ? '--' : `${formatNum(pct, 0)}%`}</span>
       </div>
-    </div>
-  );
-};
-
-const Sparkline = ({ values = [], color = '#0ea5e9', uid = 'node', last24h = null }) => {
-  const width = 280;
-  const height = 48;
-  const padX = 2;
-  const padY = 4;
-  const gid = `spark-${uid}`;
-
-  if (!values.length) {
-    return <div className="sparkline is-empty">暂无趋势</div>;
-  }
-
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values, 0.001);
-  const min = rawMax > rawMin * 2.4 ? 0 : Math.max(0, rawMin * 0.82);
-  const span = rawMax - min || 0.001;
-  const points = values.map((value, idx) => {
-    const x = padX + (idx / (values.length - 1 || 1)) * (width - padX * 2);
-    const y = height - padY - ((value - min) / span) * (height - padY * 2);
-    return [x, y];
-  });
-  const line = points.map((point, idx) => `${idx === 0 ? 'M' : 'L'}${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(' ');
-  const area = `${line} L ${points[points.length - 1][0].toFixed(1)} ${height} L ${points[0][0].toFixed(1)} ${height} Z`;
-
-  return (
-    <div className="sparkline">
-      <div className="sparkline-caption">近 72H · 每 3 小时消耗</div>
-      {last24h != null && (
-        <div className="sparkline-aux">最近 24H {formatNum(last24h, 1)} GB</div>
-      )}
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="sparkline-svg" aria-hidden="true">
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={area} fill={`url(#${gid})`} />
-        <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-      </svg>
     </div>
   );
 };
@@ -358,7 +335,19 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
 
   const isMobile = viewport < 768;
   const isNarrow = viewport < 640;
-  const hourly = (historyData.hourly || []).slice(-25);
+  // 24H 图按真实时间定位：最后一个点只比上一个整点晚几分钟、中间缺数据（服务停过）时，
+  // 横轴刻度仍然准确，而不是把所有点等距铺开
+  const timedHourly = (historyData.hourly || [])
+    .map((point) => ({ point, ts: parseLocalTime(point?.time) }))
+    .filter((item) => Number.isFinite(item.ts))
+    .sort((a, b) => a.ts - b.ts);
+  const latestPointTime = timedHourly.length ? timedHourly[timedHourly.length - 1].ts : NaN;
+  const endTs = Number.isFinite(latestPointTime) && Math.abs(Date.now() - latestPointTime) < HOUR_MS
+    ? latestPointTime
+    : Date.now();
+  const startTs = endTs - CHART_WINDOW_MS;
+  const windowed = timedHourly.filter((item) => item.ts >= startTs && item.ts <= endTs);
+  const hourly = windowed.map((item) => item.point);
   const daily = (historyData.daily || []).slice(-7);
 
   const rawMaxH = Math.max(
@@ -386,38 +375,34 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
   const graphH = chartHeight - padTop - padBottom;
   const baselineY = padTop + graphH;
   const lastIdx = hourly.length - 1;
-  const lastX = padLeft + graphW;
+  const hourlyX = windowed.map((item) => padLeft + ((item.ts - startTs) / CHART_WINDOW_MS) * graphW);
+  const lastX = lastIdx >= 0 ? hourlyX[lastIdx] : padLeft + graphW;
   const areaOpacity = series.length >= 3 ? 0.08 : series.length === 2 ? 0.11 : 0.14;
 
   const getLinePath = (seriesId) => {
     if (hourly.length === 0) return '';
     return hourly.reduce((acc, pt, idx) => {
-      const x = padLeft + (idx / (hourly.length - 1 || 1)) * graphW;
+      const x = hourlyX[idx];
       const val = getHourlyVal(pt, seriesId);
       const y = padTop + graphH - (val / maxHourlyVal) * graphH;
       return `${acc} ${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }, '');
   };
 
-  const HOURLY_INTERVALS = 6;
-  const latestPointTime = hourly.length > 0 && hourly[hourly.length - 1]?.time
-    ? new Date(hourly[hourly.length - 1].time.replace(/-/g, '/')).getTime()
-    : Date.now();
-  const endTs = !isNaN(latestPointTime) && Math.abs(Date.now() - latestPointTime) < 3600 * 1000
-    ? latestPointTime
-    : Date.now();
+  // 窄屏放不下 7 个“月-日 时:分”，改为每 6 小时一个、只显示时间（日期看悬浮提示）
+  const HOURLY_INTERVALS = isNarrow ? 4 : 6;
 
   const hourlyTicks = [];
   for (let i = 0; i <= HOURLY_INTERVALS; i += 1) {
     const ratio = i / HOURLY_INTERVALS;
-    const tickDate = new Date(endTs - (HOURLY_INTERVALS - i) * 4 * 3600 * 1000);
+    const tickDate = new Date(endTs - ((HOURLY_INTERVALS - i) / HOURLY_INTERVALS) * CHART_WINDOW_MS);
     const m = String(tickDate.getMonth() + 1).padStart(2, '0');
     const d = String(tickDate.getDate()).padStart(2, '0');
     const h = String(tickDate.getHours()).padStart(2, '0');
     const min = String(tickDate.getMinutes()).padStart(2, '0');
     hourlyTicks.push({
       x: padLeft + ratio * graphW,
-      time: `${m}-${d} ${h}:${min}`,
+      time: isNarrow ? `${h}:${min}` : `${m}-${d} ${h}:${min}`,
       align: i === 0 ? 'start' : (i === HOURLY_INTERVALS ? 'end' : 'middle')
     });
   }
@@ -462,7 +447,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         const mapped = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse()).x;
         if (Number.isFinite(mapped)) x = mapped;
       }
-    } catch (err) {
+    } catch {
       // keep the stretched-box fallback
     }
 
@@ -474,10 +459,12 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
       return;
     }
     if (activeTab === 'hourly' && hourly.length) {
-      const idx = Math.round(((x - padLeft) / graphW) * (hourly.length - 1));
-      const safeIdx = Math.min(hourly.length - 1, Math.max(0, idx));
-      const px = padLeft + (safeIdx / (hourly.length - 1 || 1)) * graphW;
-      setHover({ kind: 'hourly', idx: safeIdx, x: px, tooltipLeft, flip });
+      // 点按时间分布不等距，取横向距离最近的点
+      let nearest = 0;
+      for (let i = 1; i < hourlyX.length; i += 1) {
+        if (Math.abs(hourlyX[i] - x) < Math.abs(hourlyX[nearest] - x)) nearest = i;
+      }
+      setHover({ kind: 'hourly', idx: nearest, x: hourlyX[nearest], tooltipLeft, flip });
       return;
     }
     if (activeTab === 'daily' && daily.length) {
@@ -507,12 +494,16 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
         </div>
         <div className="tab-group">
           <button
+            type="button"
+            aria-pressed={activeTab === 'hourly'}
             className={`tab-btn ${activeTab === 'hourly' ? 'active' : ''}`}
             onClick={() => { setActiveTab('hourly'); setHover(null); }}
           >
             24H 累计走势
           </button>
           <button
+            type="button"
+            aria-pressed={activeTab === 'daily'}
             className={`tab-btn ${activeTab === 'daily' ? 'active' : ''}`}
             onClick={() => { setActiveTab('daily'); setHover(null); }}
           >
@@ -585,7 +576,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
               return (
                 <g key={item.id}>
                   <path
-                    d={`${path} L ${padLeft + graphW} ${baselineY} L ${padLeft} ${baselineY} Z`}
+                    d={`${path} L ${lastX.toFixed(1)} ${baselineY} L ${hourlyX[0].toFixed(1)} ${baselineY} Z`}
                     fill={`url(#grad-${item.id})`}
                     stroke="none"
                   />
@@ -724,7 +715,7 @@ const ResponsiveTrafficCharts = ({ historyData, overview }) => {
           </svg>
         )}
 
-        <div className="chart-hit" onMouseMove={updateHover} />
+        <div className="chart-hit" onPointerMove={updateHover} onPointerDown={updateHover} />
 
         {hover && hoverPoint && (
           <div
@@ -756,10 +747,13 @@ const ServerCard = ({ data, variant = 'compact' }) => {
 
   const traffic = data.traffic || {};
   const isRunning = data.status === 'Running';
+  const status = statusInfo(data.status);
+  // 后端流量查询失败时 used_gb 会是 0，不能当成“用了 0 GB、很健康”显示
+  const queryFailed = traffic.query_ok === false;
   const usedPct = Math.min(Number(traffic.percentage) || 0, 100);
   const threshold = traffic.threshold_gb ?? 180;
   const daysLeft = traffic.days_left_est;
-  const health = trafficHealth(usedPct, daysLeft);
+  const health = queryFailed ? { key: 'error', label: '流量查询失败' } : trafficHealth(usedPct, daysLeft);
   const isHero = variant === 'hero';
 
   return (
@@ -770,11 +764,11 @@ const ServerCard = ({ data, variant = 'compact' }) => {
           <div className="node-ip">{data.ip || '*.*.*.*'}</div>
         </div>
         <div className="node-flags">
-          <span className={`status-text ${isRunning ? 'is-on' : 'is-off'}`}>
+          <span className={`status-text is-${status.key}`}>
             <span className="dot"></span>
-            {isRunning ? '运行中' : '已关机'}
+            {status.label}
           </span>
-          {isRunning && (
+          {(isRunning || queryFailed) && (
             <span className={`health-chip is-${health.key}`}>{health.label}</span>
           )}
         </div>
@@ -782,12 +776,12 @@ const ServerCard = ({ data, variant = 'compact' }) => {
 
       <div className="card-metrics">
         <div className="metric-col is-gauge">
-          <DonutGauge percentage={usedPct} size={isHero ? 78 : 68} stroke={isHero ? 7.5 : 6.5} />
+          <DonutGauge percentage={queryFailed ? 0 : usedPct} unknown={queryFailed} size={isHero ? 78 : 68} stroke={isHero ? 7.5 : 6.5} />
         </div>
         <div className="metric-divider" aria-hidden="true" />
         <div className="metric-col">
           <div className="used-value">
-            {formatNum(traffic.used_gb, 2)}
+            {queryFailed ? '--' : formatNum(traffic.used_gb, 2)}
             <small>GB</small>
           </div>
           <div className="used-caption">本月已用 / {formatNum(threshold, 0)} GB</div>
@@ -795,7 +789,7 @@ const ServerCard = ({ data, variant = 'compact' }) => {
         <div className="metric-divider" aria-hidden="true" />
         <div className="metric-col">
           <div className="used-value is-remain">
-            {formatNum(traffic.remaining_gb, 2)}
+            {queryFailed ? '--' : formatNum(traffic.remaining_gb, 2)}
             <small>GB</small>
           </div>
           <div className="used-caption">剩余额度</div>
@@ -807,30 +801,29 @@ const ServerCard = ({ data, variant = 'compact' }) => {
 
 export default function App() {
   const initialData = typeof window !== 'undefined' ? window.__INITIAL_DATA__ : null;
+  // 后端渲染的页面一定带 __INITIAL_DATA__。只有没有后端（vite dev / 静态预览）时才用演示数据，
+  // 生产环境即使节点为空或请求失败，也绝不能把演示数字当成真实流量显示。
+  const isBackendServed = Boolean(initialData);
 
-  const [themeMode, setThemeMode] = useState(() => {
-    return localStorage.getItem('traffic_guard_theme') || 'system';
-  });
+  const [themeMode, setThemeMode] = useState(readStoredTheme);
   const [showThemeDropdown, setShowThemeDropdown] = useState(false);
   const themeDropdownRef = useRef(null);
 
   const [overview, setOverview] = useState(() => {
-    if (initialData?.overview && Object.keys(initialData.overview.servers || {}).length > 0) {
-      return initialData.overview;
-    }
-    return getDemoOverview();
+    if (initialData?.overview) return initialData.overview;
+    return isBackendServed ? null : getDemoOverview();
   });
   const [history, setHistory] = useState(() => {
-    if (initialData?.history && (initialData.history.hourly?.length || initialData.history.daily?.length)) {
-      return initialData.history;
-    }
-    return getDemoHistory();
+    if (initialData?.history) return initialData.history;
+    return isBackendServed ? null : getDemoHistory();
   });
   const [refreshing, setRefreshing] = useState(false);
   const [syncPulse, setSyncPulse] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => {
     return initialData?.overview?.timestamp ? initialData.overview.timestamp.slice(11) : new Date().toLocaleTimeString();
   });
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -838,12 +831,19 @@ export default function App() {
         setShowThemeDropdown(false);
       }
     };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setShowThemeDropdown(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('traffic_guard_theme', themeMode);
+    storeTheme(themeMode);
 
     const applyTheme = () => {
       let isDark = false;
@@ -861,7 +861,7 @@ export default function App() {
 
     applyTheme();
 
-    if (themeMode === 'system') {
+    if (themeMode === 'system' && window.matchMedia) {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       const handleChange = () => applyTheme();
       mediaQuery.addEventListener('change', handleChange);
@@ -881,51 +881,89 @@ export default function App() {
     return { label: '跟随系统', icon: <Laptop size={14} /> };
   };
 
-  const fetchData = async (isManual = false) => {
+  const pulse = () => {
+    setSyncPulse(true);
+    window.setTimeout(() => setSyncPulse(false), 420);
+  };
+
+  const fetchData = useCallback(async (isManual = false) => {
+    // 后端慢的时候（阿里云 API 超时重试可达数十秒），不让定时刷新叠加出一串并发请求
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     if (isManual) setRefreshing(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const getJson = async (path) => {
+      const res = await fetch(`${API_BASE}${path}`, { signal: controller.signal, cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    };
     try {
       const [ovRes, histRes] = await Promise.all([
-        fetch(`${API_BASE}/api/overview${isManual ? '?force=1' : ''}`).then(r => r.json()),
-        fetch(`${API_BASE}/api/history`).then(r => r.json())
+        getJson(`/api/overview${isManual ? '?force=1' : ''}`),
+        getJson('/api/history')
       ]);
-
-      if (ovRes && ovRes.servers && Object.keys(ovRes.servers).length > 0) {
-        setOverview(ovRes);
+      if (!ovRes || typeof ovRes.servers !== 'object' || ovRes.servers === null) {
+        throw new Error('unexpected overview payload');
       }
-      if (histRes && (histRes.hourly?.length || histRes.daily?.length)) {
-        setHistory(histRes);
-      }
+      setOverview(ovRes);
+      if (histRes && Array.isArray(histRes.hourly)) setHistory(histRes);
+      setSyncError(false);
       setLastUpdated(new Date().toLocaleTimeString());
-      setSyncPulse(true);
-      window.setTimeout(() => setSyncPulse(false), 420);
-    } catch (err) {
-      // In local preview/offline dev mode, update pulse & refresh demo history anchored to now
-      if (!initialData?.overview) {
+      pulse();
+    } catch {
+      if (isBackendServed) {
+        // 保留上一次的真实数据，但明确标出同步失败，更新时间不前进
+        setSyncError(true);
+      } else {
+        // 没有后端的本地预览：刷新以当前时间为终点的演示数据
         setOverview(getDemoOverview());
         setHistory(getDemoHistory());
+        setLastUpdated(new Date().toLocaleTimeString());
+        pulse();
       }
-      setLastUpdated(new Date().toLocaleTimeString());
-      setSyncPulse(true);
-      window.setTimeout(() => setSyncPulse(false), 420);
     } finally {
+      window.clearTimeout(timeout);
+      inFlightRef.current = false;
       if (isManual) {
-        setTimeout(() => setRefreshing(false), 300);
+        window.setTimeout(() => setRefreshing(false), 300);
       }
     }
-  };
+  }, [isBackendServed]);
 
   useEffect(() => {
     if (!initialData?.overview) {
       fetchData(false);
     }
+    // 只在首次挂载时补拉一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 标签页在后台时暂停轮询，切回前台立即刷新一次
   useEffect(() => {
-    const timer = setInterval(() => {
-      fetchData(false);
-    }, 30 * 1000);
-    return () => clearInterval(timer);
-  }, []);
+    let timer = null;
+    const start = () => {
+      if (!timer) timer = window.setInterval(() => fetchData(false), POLL_INTERVAL_MS);
+    };
+    const stop = () => {
+      window.clearInterval(timer);
+      timer = null;
+    };
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        fetchData(false);
+        start();
+      }
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [fetchData]);
 
   const serverList = listServers(overview);
   const nodeTotal = overview?.summary?.nodes_total ?? serverList.length;
@@ -941,8 +979,6 @@ export default function App() {
   };
 
   const currentTheme = getThemeInfo();
-  const fleetDaily = serverList.reduce((sum, node) => sum + (Number(node.traffic?.daily_avg_gb) || 0), 0);
-  const fleetDays = fleetDaily > 0 ? Math.round(summary.total_remaining_gb / fleetDaily) : null;
   const isHeroLayout = serverList.length === 1;
 
   return (
@@ -968,14 +1004,19 @@ export default function App() {
                 <span className="header-status-value">{summary.running_count || 0}/{summary.nodes_total || 0}</span>
                 <span>在线</span>
               </div>
-              <div className="header-status" title="数据同步">
+              <div
+                className={`header-status ${syncError ? 'is-error' : ''}`}
+                title={syncError ? `同步失败，显示的是 ${lastUpdated} 的数据` : '数据同步'}
+                role="status"
+              >
                 <Clock size={14} className="header-status-sync" />
-                <span className="header-status-label">数据同步</span>
+                <span className="header-status-label">{syncError ? '同步失败' : '数据同步'}</span>
                 <span className="header-status-value">{lastUpdated || '--:--:--'}</span>
               </div>
             </div>
 
             <button
+              type="button"
               className="btn btn-primary"
               onClick={() => fetchData(true)}
               disabled={refreshing}
@@ -986,9 +1027,12 @@ export default function App() {
 
             <div className="theme-dropdown-wrapper" ref={themeDropdownRef}>
               <button
+                type="button"
                 className="btn btn-theme-toggle"
                 onClick={() => setShowThemeDropdown(prev => !prev)}
                 title="选择主题模式"
+                aria-haspopup="menu"
+                aria-expanded={showThemeDropdown}
               >
                 {currentTheme.icon}
                 <span>{currentTheme.label}</span>
@@ -996,33 +1040,42 @@ export default function App() {
               </button>
 
               {showThemeDropdown && (
-                <div className="theme-popover-menu">
-                  <div
+                <div className="theme-popover-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={themeMode === 'system'}
                     className={`theme-option ${themeMode === 'system' ? 'selected' : ''}`}
                     onClick={() => selectTheme('system')}
                   >
                     <Laptop size={15} />
                     <span>跟随系统</span>
                     {themeMode === 'system' && <Check size={14} className="check-icon" />}
-                  </div>
+                  </button>
 
-                  <div
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={themeMode === 'light'}
                     className={`theme-option ${themeMode === 'light' ? 'selected' : ''}`}
                     onClick={() => selectTheme('light')}
                   >
                     <Sun size={15} />
                     <span>浅色模式</span>
                     {themeMode === 'light' && <Check size={14} className="check-icon" />}
-                  </div>
+                  </button>
 
-                  <div
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={themeMode === 'dark'}
                     className={`theme-option ${themeMode === 'dark' ? 'selected' : ''}`}
                     onClick={() => selectTheme('dark')}
                   >
                     <Moon size={15} />
                     <span>深色模式</span>
                     {themeMode === 'dark' && <Check size={14} className="check-icon" />}
-                  </div>
+                  </button>
                 </div>
               )}
             </div>
