@@ -78,7 +78,7 @@ docker compose logs -f
 http://服务器IP:8388
 ```
 
-默认监听 `0.0.0.0:8388`，**没有内置登录认证**。不要把 8388 无限制地暴露到公网。详见 [部署前须知](#部署前须知)。
+默认监听 `0.0.0.0:8388`，**默认不开启登录认证**（可通过 `auth_password` 开启 HTTP Basic 认证）。不要把 8388 无限制地暴露到公网。详见 [部署前须知](#部署前须知)。
 
 ## 部署前须知
 
@@ -99,8 +99,8 @@ http://服务器IP:8388
 当前 Dashboard：
 
 - 默认绑定 `0.0.0.0:8388`
-- 无用户名 / 密码
-- 无内置 HTTPS
+- 默认无用户名 / 密码；在 `config.json` 设置 `auth_password`（或环境变量 `DASHBOARD_PASSWORD`）即可开启浏览器原生的 HTTP Basic 认证，用户名默认 `admin`
+- 无内置 HTTPS（Basic 认证在纯 HTTP 下等同明文传输密码，公网访问请配合 Nginx / Caddy 的 HTTPS）
 
 暴露到公网会让他人看到 Dashboard、节点状态、流量和部分实例信息。不建议把 8388 对整个互联网开放。
 
@@ -347,6 +347,8 @@ docker run -d \
 | `guard_enabled` | `true` | 全局是否执行开关机 |
 | `guard_auto_start` | `true` | 全局是否在低于阈值时自动开机 |
 | `guard_interval_seconds` | `60` | 守卫检查间隔（最短 15 秒） |
+| `auth_username` / `auth_password` | `admin` / 空 | 设置密码即开启 HTTP Basic 认证；也可用环境变量 `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` |
+| `cors_allow_origin` | 空 | 默认不发送 CORS 头；确需跨域调用 API 时填写允许的 Origin |
 | `servers.<id>.guard_enabled` | `true` | 单节点可单独关闭守卫 |
 | `servers.<id>.guard_auto_start` | 跟随全局 | 单节点可单独关闭自动开机 |
 | `servers.<id>.bandwidth_mbps` | `0` | `0` 表示自动探测：配置值 → ECS/EIP → CBWP |

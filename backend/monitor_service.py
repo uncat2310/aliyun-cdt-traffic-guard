@@ -8,13 +8,18 @@ High-Performance SSR-Lite & In-Memory Pre-Warming Server
 import os
 import re
 import sys
+import hmac
 import json
 import time
 import gzip
+import base64
+import calendar
 import logging
+import posixpath
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import urllib.parse
 
 from aliyunsdkcore.client import AcsClient
@@ -104,6 +109,13 @@ def node_count_label(count):
     return f"{count}机"
 
 
+def _safe_float(value, default):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 CONFIG = load_config()
 HOST = CONFIG.get("host", "0.0.0.0")
 PORT = CONFIG.get("port", 8388)
@@ -115,13 +127,18 @@ _RAW_SERVERS = CONFIG.get("servers") or {}
 SERVERS = {key: cfg for key, cfg in _RAW_SERVERS.items() if is_configured_server(cfg)}
 _last_guard_ts = 0.0
 
-_cache = {
-    "overview_timestamp": 0,
-    "overview_data": None,
-    "history_timestamp": 0,
-    "history_data": None
-}
-_cache_lock = threading.Lock()
+# 可选 HTTP Basic 认证：设置密码即启用（环境变量优先于 config.json）
+AUTH_USERNAME = os.environ.get("DASHBOARD_USERNAME") or str(CONFIG.get("auth_username") or "admin")
+AUTH_PASSWORD = os.environ.get("DASHBOARD_PASSWORD") or str(CONFIG.get("auth_password") or "")
+# 默认不发送 CORS 头（面板与 API 同源）；需要跨域时显式配置允许的 Origin
+CORS_ALLOW_ORIGIN = str(CONFIG.get("cors_allow_origin") or "").strip()
+
+OVERVIEW_TTL = 20
+HISTORY_TTL = 30
+# 两次强制刷新之间的最短间隔，防止匿名请求刷爆阿里云 API 配额
+FORCE_REFRESH_MIN_INTERVAL = 5
+POLL_INTERVAL = 12
+BANDWIDTH_CACHE_TTL = 600
 
 logging.basicConfig(
     level=logging.INFO,
@@ -131,8 +148,21 @@ logger = logging.getLogger("TrafficGuardService")
 
 
 # ================== 阿里云 API 交互 ==================
+_client_cache = {}
+_client_lock = threading.Lock()
+
+
 def get_aliyun_client(server_cfg):
-    return AcsClient(server_cfg["ak"], server_cfg["sk"], server_cfg["region_id"])
+    """复用 AcsClient（含 HTTP 连接池与 endpoint 解析缓存），避免每次调用重建。"""
+    key = (server_cfg["ak"], server_cfg["sk"], server_cfg["region_id"])
+    client = _client_cache.get(key)
+    if client is None:
+        with _client_lock:
+            client = _client_cache.get(key)
+            if client is None:
+                client = AcsClient(*key)
+                _client_cache[key] = client
+    return client
 
 
 def query_cdt_traffic(server_cfg):
@@ -280,6 +310,9 @@ def query_shared_bandwidth(server_cfg, public_ips):
         return None
 
 
+_bandwidth_cache = {}
+
+
 def resolve_bandwidth_mbps(server_cfg, ecs):
     cfg_bw = _safe_int(server_cfg.get("bandwidth_mbps"))
     if cfg_bw:
@@ -287,37 +320,106 @@ def resolve_bandwidth_mbps(server_cfg, ecs):
     ecs_bw = _safe_int(ecs.get("internet_bw_out")) or _safe_int(ecs.get("eip_bandwidth"))
     if ecs_bw:
         return ecs_bw
-    return query_shared_bandwidth(server_cfg, set(ecs.get("public_ips") or []))
+    # 共享带宽包几乎不变，缓存结果（包括失败）以免每轮轮询都多打一次 VPC API
+    public_ips = frozenset(ecs.get("public_ips") or [])
+    key = (server_cfg.get("ak"), server_cfg.get("region_id"), server_cfg.get("instance_id"), public_ips)
+    now = time.monotonic()
+    cached = _bandwidth_cache.get(key)
+    if cached and cached[1] > now:
+        return cached[0]
+    value = query_shared_bandwidth(server_cfg, set(public_ips))
+    _bandwidth_cache[key] = (value, now + BANDWIDTH_CACHE_TTL)
+    return value
 
 
 # ================== 历史日志解析 ==================
 LOG_TRAFFIC_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ - INFO - 当月CDT流量使用: ([\d\.]+) GB')
 
+class _LogFileState:
+    """单个日志文件的增量解析状态：只读取上次之后新追加的内容。"""
+
+    __slots__ = ("inode", "offset", "hourly", "daily")
+
+    def __init__(self, inode):
+        self.inode = inode
+        self.offset = 0
+        self.hourly = {}
+        self.daily = {}
+
+
+_log_states = {}
+_log_states_lock = threading.Lock()
+
+
+def _ingest_log_line(state, line):
+    m = LOG_TRAFFIC_REGEX.search(line)
+    if not m:
+        return
+    time_str, gb_str = m.groups()
+    try:
+        val = float(gb_str)
+    except ValueError:
+        return
+    state.hourly[time_str[:13] + ":00"] = val
+    day_key = time_str[:10]
+    info = state.daily.get(day_key)
+    if info is None:
+        state.daily[day_key] = {"min": val, "max": val, "first": val, "last": val}
+    else:
+        if val > info["max"]:
+            info["max"] = val
+        if val < info["min"]:
+            info["min"] = val
+        info["last"] = val
+
+
+def _read_log_incremental(log_file):
+    try:
+        st = os.stat(log_file)
+    except OSError:
+        return None
+    state = _log_states.get(log_file)
+    # 文件被轮转 / 截断时重新解析
+    if state is None or state.inode != st.st_ino or st.st_size < state.offset:
+        state = _LogFileState(st.st_ino)
+        _log_states[log_file] = state
+    if st.st_size == state.offset:
+        return state
+    try:
+        with open(log_file, "rb") as f:
+            f.seek(state.offset)
+            chunk = f.read(st.st_size - state.offset)
+    except Exception as e:
+        logger.error(f"Error parsing log file {log_file}: {e}")
+        return state
+    # 只处理完整行，末尾未写完的半行留到下一轮
+    end = chunk.rfind(b"\n") + 1
+    if end <= 0:
+        return state
+    for line in chunk[:end].decode("utf-8", errors="ignore").splitlines():
+        _ingest_log_line(state, line)
+    state.offset += end
+    return state
+
+
 def parse_server_history(log_files):
     hourly_map = {}
     daily_map = {}
 
-    for log_file in reversed(log_files):
-        if not os.path.exists(log_file):
-            continue
-        try:
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    m = LOG_TRAFFIC_REGEX.search(line)
-                    if m:
-                        time_str, gb_str = m.groups()
-                        val = float(gb_str)
-                        hour_key = time_str[:13] + ":00"
-                        day_key = time_str[:10]
-                        hourly_map[hour_key] = val
-                        if day_key not in daily_map:
-                            daily_map[day_key] = {"min": val, "max": val, "first": val, "last": val}
-                        else:
-                            daily_map[day_key]["max"] = max(daily_map[day_key]["max"], val)
-                            daily_map[day_key]["min"] = min(daily_map[day_key]["min"], val)
-                            daily_map[day_key]["last"] = val
-        except Exception as e:
-            logger.error(f"Error parsing log file {log_file}: {e}")
+    with _log_states_lock:
+        for log_file in reversed(log_files):
+            state = _read_log_incremental(log_file)
+            if state is None:
+                continue
+            hourly_map.update(state.hourly)
+            for day_key, info in state.daily.items():
+                merged = daily_map.get(day_key)
+                if merged is None:
+                    daily_map[day_key] = dict(info)
+                else:
+                    merged["max"] = max(merged["max"], info["max"])
+                    merged["min"] = min(merged["min"], info["min"])
+                    merged["last"] = info["last"]
 
     sorted_hours = sorted(hourly_map.keys())
     if len(sorted_hours) > 168:
@@ -405,17 +507,19 @@ def enforce_guards(overview):
 
         if not GUARD_ENABLED or s_cfg.get("guard_enabled") is False:
             continue
-        threshold = float(s_cfg.get("threshold_gb", 180.0))
+        threshold = _safe_float(s_cfg.get("threshold_gb"), 180.0)
         status = node.get("status")
         try:
             if used >= threshold:
-                if status == "Stopped":
-                    logger.info("Guard %s already stopped (%.2f / %.0f GB)", name, used, threshold)
+                if status in ("Stopped", "Stopping"):
+                    logger.info("Guard %s already %s (%.2f / %.0f GB)", name, status.lower(), used, threshold)
                     continue
+                # 状态未知时仍尝试关机：超额风险优先
                 logger.warning("Guard stop %s: %.2f GB >= %.0f GB", name, used, threshold)
                 set_instance_power(s_cfg, "stop")
             elif GUARD_AUTO_START and s_cfg.get("guard_auto_start", True):
-                if status == "Running":
+                # 只在确认已停止时开机；ECS 查询失败 (Unknown) 或处于过渡状态时不动
+                if status != "Stopped":
                     continue
                 logger.info("Guard start %s: %.2f GB < %.0f GB", name, used, threshold)
                 set_instance_power(s_cfg, "start")
@@ -424,6 +528,44 @@ def enforce_guards(overview):
 
 
 # ================== 数据汇总生成 ==================
+_api_pool = None
+_api_pool_lock = threading.Lock()
+
+
+def _get_api_pool():
+    global _api_pool
+    with _api_pool_lock:
+        if _api_pool is None:
+            workers = max(4, min(16, len(SERVERS) * 2))
+            _api_pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="aliyun-api")
+        return _api_pool
+
+
+def _query_all_servers():
+    """并发查询所有节点的 CDT / ECS / 带宽，耗时从 N×串行 降到约一次往返。"""
+    if not SERVERS:
+        return {}
+    pool = _get_api_pool()
+    cdt_futures = {k: pool.submit(query_cdt_traffic, c) for k, c in SERVERS.items()}
+    ecs_futures = {k: pool.submit(query_ecs_info, c) for k, c in SERVERS.items()}
+    ecs_results = {k: f.result() for k, f in ecs_futures.items()}
+    bw_futures = {
+        k: pool.submit(resolve_bandwidth_mbps, c, ecs_results[k]) for k, c in SERVERS.items()
+    }
+    return {
+        k: (cdt_futures[k].result(), ecs_results[k], bw_futures[k].result())
+        for k in SERVERS
+    }
+
+
+def _public_ecs_info(ecs):
+    """对外输出时去掉真实公网 IP 与原始异常信息（可能含 AccessKeyId / RequestId）。"""
+    public = {k: v for k, v in ecs.items() if k not in ("public_ips", "error")}
+    if not ecs.get("success"):
+        public["error"] = "ECS query failed"
+    return public
+
+
 def compute_overview_data():
     servers_data = {}
     combined_used_gb = 0.0
@@ -431,14 +573,14 @@ def compute_overview_data():
 
     current_dt = datetime.now()
     day_of_month = max(1, current_dt.day)
-    days_in_month = 31
+    days_in_month = calendar.monthrange(current_dt.year, current_dt.month)[1]
 
+    results = _query_all_servers()
     for s_key, s_cfg in SERVERS.items():
-        cdt = query_cdt_traffic(s_cfg)
-        ecs = query_ecs_info(s_cfg)
+        cdt, ecs, bandwidth_mbps = results[s_key]
 
         used_gb = cdt["total_gb"]
-        threshold_gb = s_cfg.get("threshold_gb", 180.0)
+        threshold_gb = _safe_float(s_cfg.get("threshold_gb"), 180.0)
         remaining_gb = max(0.0, round(threshold_gb - used_gb, 3))
         pct = round((used_gb / threshold_gb) * 100, 1) if threshold_gb > 0 else 0.0
 
@@ -457,7 +599,7 @@ def compute_overview_data():
             "region_id": s_cfg.get("region_id", "cn-hongkong"),
             "region_name": "阿里云香港",
             "status": ecs.get("status", "Unknown"),
-            "ecs_info": ecs,
+            "ecs_info": _public_ecs_info(ecs),
             "traffic": {
                 "used_gb": used_gb,
                 "used_bytes": cdt.get("total_bytes", 0),
@@ -466,7 +608,7 @@ def compute_overview_data():
                 "percentage": pct,
                 "isp": cdt.get("isp", "BGP"),
                 "product": cdt.get("product", "CBWP"),
-                "bandwidth_mbps": resolve_bandwidth_mbps(s_cfg, ecs),
+                "bandwidth_mbps": bandwidth_mbps,
                 "daily_avg_gb": daily_avg,
                 "days_left_est": days_left,
                 "projected_month_end_gb": projected_month_end,
@@ -587,24 +729,85 @@ def compute_history_data():
     }
 
 
+# ================== 缓存层 ==================
+def _json_bytes(data):
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+def _json_for_script(data):
+    """内联到 <script> 时转义 <、>、& 与行分隔符，防止 </script> 截断导致 XSS。"""
+    return (
+        json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
+class _Payload:
+    """预先序列化 + 压缩的响应体，同一份快照被多次请求时不再重复编码。"""
+
+    __slots__ = ("body", "gzipped")
+
+    def __init__(self, body, compress=True):
+        self.body = body
+        self.gzipped = gzip.compress(body, compresslevel=6) if compress and len(body) > 256 else None
+
+
+class _Snapshot:
+    __slots__ = ("data", "created", "payload")
+
+    def __init__(self, data):
+        self.data = data
+        self.created = time.monotonic()
+        self.payload = _Payload(_json_bytes(data))
+
+
+class _CachedResource:
+    """
+    读请求直接返回内存快照；只有过期或强制刷新时才计算。
+    并发的刷新请求会合并成一次计算，overview 与 history 互不阻塞。
+    """
+
+    def __init__(self, compute, ttl):
+        self._compute = compute
+        self._ttl = ttl
+        self._lock = threading.Lock()
+        self._snapshot = None
+
+    def _fresh(self, snap, force):
+        if snap is None:
+            return False
+        age = time.monotonic() - snap.created
+        if force:
+            return age < FORCE_REFRESH_MIN_INTERVAL
+        return age <= self._ttl
+
+    def get(self, force=False):
+        snap = self._snapshot
+        if self._fresh(snap, force):
+            return snap
+        with self._lock:
+            snap = self._snapshot
+            if self._fresh(snap, force):
+                return snap
+            snap = _Snapshot(self._compute())
+            self._snapshot = snap
+            return snap
+
+
+_overview_cache = _CachedResource(lambda: compute_overview_data(), OVERVIEW_TTL)
+_history_cache = _CachedResource(lambda: compute_history_data(), HISTORY_TTL)
+
+
 def get_cached_overview(force=False):
-    global _cache
-    with _cache_lock:
-        now = time.time()
-        if force or not _cache["overview_data"] or (now - _cache["overview_timestamp"] > 20):
-            _cache["overview_data"] = compute_overview_data()
-            _cache["overview_timestamp"] = now
-        return _cache["overview_data"]
+    return _overview_cache.get(force).data
 
 
 def get_cached_history(force=False):
-    global _cache
-    with _cache_lock:
-        now = time.time()
-        if force or not _cache["history_data"] or (now - _cache["history_timestamp"] > 30):
-            _cache["history_data"] = compute_history_data()
-            _cache["history_timestamp"] = now
-        return _cache["history_data"]
+    return _history_cache.get(force).data
 
 
 def background_poller():
@@ -625,9 +828,10 @@ def background_poller():
             get_cached_history(force=True)
         except Exception as e:
             logger.error(f"Error in background poller: {e}")
-        time.sleep(12)
+        time.sleep(POLL_INTERVAL)
 
 
+# ================== HTTP 服务 ==================
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
@@ -642,38 +846,175 @@ MIME_TYPES = {
     ".woff2": "font/woff2",
     ".ttf": "font/ttf"
 }
+COMPRESSIBLE_EXTS = {".html", ".js", ".css", ".json", ".svg", ".ico", ".ttf"}
+STATIC_ROOT = os.path.realpath(STATIC_DIR)
+STATIC_CACHE_MAX_FILE_BYTES = 8 * 1024 * 1024
+MAX_REQUEST_BODY_BYTES = 64 * 1024
+FALLBACK_HTML = _Payload("""<!DOCTYPE html><html><head><meta charset="utf-8"><title>流量守卫</title></head>
+<body><h2>🚀 流量守卫服务启动中...</h2></body></html>""".encode("utf-8"))
 
-class DashboardRequestHandler(SimpleHTTPRequestHandler):
+_static_cache = {}
+_static_cache_lock = threading.Lock()
+_index_cache = {"key": None, "template": None, "payload": None}
+_index_lock = threading.Lock()
+
+
+def resolve_static_path(url_path):
+    """把 URL 路径映射到 dashboard_dist 内的真实文件；越界（../、符号链接等）返回 None。"""
+    rel = urllib.parse.unquote(url_path)
+    if "\x00" in rel:
+        return None
+    rel = posixpath.normpath("/" + rel.replace("\\", "/")).lstrip("/")
+    full = os.path.realpath(os.path.join(STATIC_ROOT, rel))
+    if full != STATIC_ROOT and not full.startswith(STATIC_ROOT + os.sep):
+        return None
+    return full
+
+
+def _load_static(file_path, st):
+    key = (st.st_mtime_ns, st.st_size)
+    entry = _static_cache.get(file_path)
+    if entry and entry[0] == key:
+        return entry[1]
+    with open(file_path, "rb") as f:
+        content = f.read()
+    ext = os.path.splitext(file_path)[1].lower()
+    payload = _Payload(content, compress=ext in COMPRESSIBLE_EXTS)
+    if st.st_size <= STATIC_CACHE_MAX_FILE_BYTES:
+        with _static_cache_lock:
+            _static_cache[file_path] = (key, payload)
+    return payload
+
+
+def _index_template(html_file):
+    st = os.stat(html_file)
+    key = (st.st_mtime_ns, st.st_size)
+    if _index_cache["template"] is None or _index_cache["template"][0] != key:
+        with open(html_file, "r", encoding="utf-8") as f:
+            raw_html = f.read()
+        head, sep, tail = raw_html.partition("</head>")
+        _index_cache["template"] = (key, (head, tail) if sep else None, raw_html)
+    return _index_cache["template"]
+
+
+def build_index_payload(html_file):
+    overview = _overview_cache.get()
+    history = _history_cache.get()
+    with _index_lock:
+        template = _index_template(html_file)
+        cache_key = (template[0], overview, history)
+        cached = _index_cache["payload"]
+        if cached and cached[0] == cache_key:
+            return cached[1]
+        parts = template[1]
+        if parts is None:
+            html = template[2]
+        else:
+            initial_state = _json_for_script({"overview": overview.data, "history": history.data})
+            html = f"{parts[0]}<script>window.__INITIAL_DATA__ = {initial_state};</script></head>{parts[1]}"
+        payload = _Payload(html.encode("utf-8"))
+        _index_cache["payload"] = (cache_key, payload)
+        return payload
+
+
+def _check_basic_auth(header_value):
+    if not AUTH_PASSWORD:
+        return True
+    if not header_value or not header_value.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(header_value[6:].strip(), validate=True).decode("utf-8")
+    except Exception:
+        return False
+    username, sep, password = decoded.partition(":")
+    if not sep:
+        return False
+    user_ok = hmac.compare_digest(username.encode("utf-8"), AUTH_USERNAME.encode("utf-8"))
+    pass_ok = hmac.compare_digest(password.encode("utf-8"), AUTH_PASSWORD.encode("utf-8"))
+    return user_ok and pass_ok
+
+
+def _is_truthy(query, name):
+    return query.get(name, ["0"])[0] in ("1", "true", "True")
+
+
+class DashboardRequestHandler(BaseHTTPRequestHandler):
+    # 不暴露 Python 版本；限制慢连接占用线程
+    protocol_version = "HTTP/1.1"
+    timeout = 30
+
+    def version_string(self):
+        return "TrafficGuard"
+
     def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        if CORS_ALLOW_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", CORS_ALLOW_ORIGIN)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            if CORS_ALLOW_ORIGIN != "*":
+                self.send_header("Vary", "Origin")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "same-origin")
         super().end_headers()
+
+    def _authorized(self):
+        if _check_basic_auth(self.headers.get("Authorization")):
+            return True
+        body = b"Unauthorized"
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Traffic Guard", charset="UTF-8"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+        return False
 
     def do_OPTIONS(self):
         self.send_response(204)
+        self.send_header("Allow", "GET, HEAD, POST, OPTIONS")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def do_HEAD(self):
+        self.do_GET()
+
     def do_GET(self):
+        if not self._authorized():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
         if path == "/api/overview" or path == "/api/stats":
-            force = query.get("force", ["0"])[0] in ["1", "true", "True"]
-            data = get_cached_overview(force=force)
-            self._send_json(data)
+            self._send_payload(_overview_cache.get(force=_is_truthy(query, "force")).payload,
+                               "application/json; charset=utf-8", no_cache=True)
             return
 
         if path == "/api/history":
-            force = query.get("force", ["0"])[0] in ["1", "true", "True"]
-            data = get_cached_history(force=force)
-            self._send_json(data)
+            self._send_payload(_history_cache.get(force=_is_truthy(query, "force")).payload,
+                               "application/json; charset=utf-8", no_cache=True)
             return
 
         self._serve_static(path)
 
+    def _discard_request_body(self):
+        """keep-alive 下必须读掉请求体，否则残留字节会被当成下一个请求解析。"""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length < 0 or length > MAX_REQUEST_BODY_BYTES:
+            self.close_connection = True
+            return
+        if length:
+            self.rfile.read(length)
+
     def do_POST(self):
+        self._discard_request_body()
+        if not self._authorized():
+            return
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/refresh":
@@ -684,22 +1025,24 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         self.send_error(404, "Endpoint not found")
 
     def _send_json(self, data, code=200):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self._send_response_bytes(body, "application/json; charset=utf-8", code=code, no_cache=True)
+        self._send_payload(_Payload(_json_bytes(data)), "application/json; charset=utf-8",
+                           code=code, no_cache=True)
 
     def _serve_static(self, path):
-        if not os.path.exists(STATIC_DIR):
-            self._send_fallback_html()
+        if not os.path.isdir(STATIC_DIR):
+            self._send_payload(FALLBACK_HTML, "text/html; charset=utf-8", no_cache=True)
             return
 
-        clean_path = path.lstrip("/")
-        if not clean_path or clean_path == "index.html":
+        file_path = resolve_static_path(path)
+        if file_path is None or file_path in (STATIC_ROOT, os.path.join(STATIC_ROOT, "index.html")):
             self._serve_injected_index_html()
             return
 
-        file_path = os.path.join(STATIC_DIR, clean_path)
-
-        if not os.path.exists(file_path) or os.path.isdir(file_path):
+        try:
+            st = os.stat(file_path)
+        except OSError:
+            st = None
+        if st is None or not os.path.isfile(file_path):
             self._serve_injected_index_html()
             return
 
@@ -707,42 +1050,33 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         mime_type = MIME_TYPES.get(ext, "application/octet-stream")
 
         try:
-            with open(file_path, "rb") as f:
-                content = f.read()
-            is_immutable = ext in [".js", ".css", ".png", ".svg", ".ico", ".woff2"]
-            self._send_response_bytes(content, mime_type, immutable=is_immutable)
+            payload = _load_static(file_path, st)
         except Exception as e:
-            self.send_error(500, f"Error reading file: {e}")
+            logger.error(f"Error reading static file {file_path}: {e}")
+            self.send_error(500, "Error reading file")
+            return
+        # 只有 Vite 输出到 assets/ 的带哈希文件名才可以永久缓存
+        rel = os.path.relpath(file_path, STATIC_ROOT).replace(os.sep, "/")
+        self._send_payload(payload, mime_type, immutable=rel.startswith("assets/"))
 
     def _serve_injected_index_html(self):
         html_file = os.path.join(STATIC_DIR, "index.html")
         if not os.path.exists(html_file):
-            self._send_fallback_html()
+            self._send_payload(FALLBACK_HTML, "text/html; charset=utf-8", no_cache=True)
             return
 
         try:
-            with open(html_file, "r", encoding="utf-8") as f:
-                raw_html = f.read()
-
-            overview_data = get_cached_overview()
-            history_data = get_cached_history()
-
-            initial_state = {
-                "overview": overview_data,
-                "history": history_data
-            }
-            script_tag = f"<script>window.__INITIAL_DATA__ = {json.dumps(initial_state, ensure_ascii=False)};</script></head>"
-            injected_html = raw_html.replace("</head>", script_tag, 1)
-
-            body = injected_html.encode("utf-8")
-            self._send_response_bytes(body, "text/html; charset=utf-8", no_cache=True)
+            payload = build_index_payload(html_file)
         except Exception as e:
             logger.error(f"Error injecting HTML data: {e}")
-            self.send_error(500, f"Error serving index: {e}")
+            self.send_error(500, "Error serving index")
+            return
+        self._send_payload(payload, "text/html; charset=utf-8", no_cache=True)
 
-    def _send_response_bytes(self, content_bytes, content_type, code=200, immutable=False, no_cache=False):
+    def _send_payload(self, payload, content_type, code=200, immutable=False, no_cache=False):
         accept_encoding = self.headers.get("Accept-Encoding", "")
-        can_gzip = "gzip" in accept_encoding and len(content_bytes) > 256
+        use_gzip = payload.gzipped is not None and "gzip" in accept_encoding
+        body = payload.gzipped if use_gzip else payload.body
 
         self.send_response(code)
         self.send_header("Content-Type", content_type)
@@ -754,21 +1088,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         else:
             self.send_header("Cache-Control", "public, max-age=3600")
 
-        if can_gzip:
-            compressed = gzip.compress(content_bytes, compresslevel=6)
+        if payload.gzipped is not None:
+            self.send_header("Vary", "Accept-Encoding")
+        if use_gzip:
             self.send_header("Content-Encoding", "gzip")
-            self.send_header("Content-Length", str(len(compressed)))
-            self.end_headers()
-            self.wfile.write(compressed)
-        else:
-            self.send_header("Content-Length", str(len(content_bytes)))
-            self.end_headers()
-            self.wfile.write(content_bytes)
-
-    def _send_fallback_html(self):
-        html = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>流量守卫</title></head>
-<body><h2>🚀 流量守卫服务启动中...</h2></body></html>"""
-        self._send_response_bytes(html.encode("utf-8"), "text/html; charset=utf-8", no_cache=True)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def log_message(self, format, *args):
         pass
