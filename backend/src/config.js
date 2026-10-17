@@ -43,15 +43,16 @@ export function loadConfig() {
 
 const PLACEHOLDER_MARKERS = ['YOUR_ALIYUN', 'YOUR_ACCESS', 'i-xxxxxxxx', 'i-example', 'i-yourinstanceid'];
 
+// 与前端 frontend/src/App.jsx 的 SERIES_COLORS 保持一致（图表直接使用这里下发的颜色）
 export const SERIES_COLORS = [
-  '#0ea5e9',
-  '#6366f1',
-  '#10b981',
-  '#f59e0b',
+  '#38bdf8',
+  '#818cf8',
+  '#34d399',
+  '#fbbf24',
   '#f43f5e',
-  '#8b5cf6',
-  '#14b8a6',
-  '#f97316',
+  '#a78bfa',
+  '#2dd4bf',
+  '#fb923c',
 ];
 
 /** 跳过示例占位节点，避免单机用户复制 example 后仍显示两台。 */
