@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/traffic_guard/backend
-ExecStart=/opt/traffic_guard/.venv/bin/python3 /opt/traffic_guard/backend/monitor_service.py
+ExecStart=/usr/bin/node /opt/traffic_guard/backend/src/index.js
 Restart=always
 RestartSec=5
 

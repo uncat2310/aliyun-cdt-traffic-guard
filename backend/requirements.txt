@@ -1,2 +1,0 @@
-aliyun-python-sdk-core>=2.15.0
-aliyun-python-sdk-ecs>=4.24.0

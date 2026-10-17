@@ -90,7 +90,7 @@ http://服务器IP:8388
 
 不要安装在自己要自动关机保护的那台 ECS 上。目标机关闭后，守卫也会一起停下。
 
-容器启动后会自动跑后端：提供网页、查询阿里云、写历史、按阈值开关机。不需要再手动执行 Python 脚本。
+容器启动后会自动跑后端：提供网页、查询阿里云、写历史、按阈值开关机。不需要再手动执行任何脚本。
 
 `restart: unless-stopped` 表示容器崩溃会重启；**主机重启后，只要 Docker 服务本身会开机启动，这个容器也会跟着起来。** Linux 安装 Docker 后通常已经是开机自启。
 
@@ -121,7 +121,7 @@ http://服务器IP:8388
        ↓  (Add-on Gateway)
 Aliyun CDT / ECS / VPC API
        ↓
-Traffic Guard Backend (Python 3.10+)
+Traffic Guard Backend (Node.js 20+，零第三方依赖，HTTPS 直连阿里云 API)
   ├─ In-Memory Pre-Warming 内存缓存池 (12s 异步预热)
   ├─ SSR-Lite 预渲染注入 (window.__INITIAL_DATA__)
   ├─ 24H 时间线当前分钟锚定 (now_min 实时平滑拼接)
@@ -392,15 +392,23 @@ docker run -d \
 cd frontend && npm install && npm run build && cd ..
 cp -R frontend/dist backend/dashboard_dist
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 cp config.example.json config.json
-python monitor_service.py
+node src/index.js        # 需要 Node.js 20+，后端没有 npm 依赖，无需 npm install
 ```
+
+后端测试：`cd backend && npm test`。
+
+如需在 crontab 中单独执行一次守卫检查（通常不需要，服务本身每分钟检查）：
+
+```bash
+CONFIG_PATH=/path/to/config.json node scripts/auto-traffic-guard.mjs
+```
+
+服务器需要通过 HTTP 代理访问阿里云时，Node.js 22.21+ / 24.5+ 可设置 `NODE_USE_ENV_PROXY=1` 让其读取 `HTTPS_PROXY`。
 
 ## 技术栈
 
-Python 3.10+ · React 19 · Vite · SSR-Lite · Playwright · Docker · GitHub Container Registry
+Node.js 20+ · React 19 · Vite · SSR-Lite · Playwright · Docker · GitHub Container Registry
 
 ---
 

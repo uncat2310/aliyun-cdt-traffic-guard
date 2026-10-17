@@ -1,0 +1,15 @@
+{
+  "name": "traffic-guard-backend",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Alibaba Cloud CDT Traffic Guard & Monitoring Dashboard Service",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  }
+}
