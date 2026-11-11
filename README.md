@@ -14,7 +14,6 @@
 
 <br/>
 
-[![在线 Demo](https://img.shields.io/badge/在线_Demo-traffic.honkai3rd.eu.org-0ea5e9?style=for-the-badge)](https://traffic.honkai3rd.eu.org)
 [![快速开始](https://img.shields.io/badge/快速开始-Docker_Compose-111827?style=for-the-badge)](#快速开始)
 
 <br/>
@@ -26,17 +25,15 @@
 
 <br/>
 
-<a href="https://traffic.honkai3rd.eu.org">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/images/dashboard-light.png">
     <img src="docs/images/dashboard-dark.png" alt="流量守卫 Dashboard：精简顶栏、平稳卡片、工业级双主题与 24 小时 / 72 小时流量走势" />
   </picture>
-</a>
 
 <br/>
 
-<sub>全新极简工业风与对称指标设计，顶栏状态内联精简，交互平稳无抖动，支持深浅色无缝切换。Demo 使用示例数据。</sub>
+<sub>全新极简工业风与对称指标设计，顶栏状态内联精简，交互平稳无抖动，支持深浅色无缝切换。截图使用示例数据，部署后展示你的实际流量。</sub>
 
 </div>
 
@@ -414,6 +411,6 @@ Node.js 20+ · React 19 · Vite · SSR-Lite · Playwright · Docker · GitHub Co
 
 <div align="center">
 
-[在线 Demo](https://traffic.honkai3rd.eu.org) · [MIT License](LICENSE)
+[MIT License](LICENSE)
 
 </div>
